@@ -2,10 +2,13 @@ import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/category_type.dart';
+import '../theme/app_theme.dart';
 
 class CustomImageView extends StatelessWidget {
   final String? imagePath;
   final CategoryType type;
+  final bool isCategory;
+  final IconData? fallbackIcon;
   final double? width;
   final double? height;
   final BorderRadius? borderRadius;
@@ -15,6 +18,8 @@ class CustomImageView extends StatelessWidget {
     super.key,
     this.imagePath,
     required this.type,
+    this.isCategory = false,
+    this.fallbackIcon,
     this.width,
     this.height,
     this.borderRadius,
@@ -67,26 +72,38 @@ class CustomImageView extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() {
-    final isFood = type == CategoryType.food;
-    final iconData = isFood ? Icons.restaurant_rounded : Icons.local_drink_rounded;
+    final iconData = fallbackIcon ?? (isCategory ? type.categoryIcon : type.menuIcon);
 
-    // Menghitung ukuran icon yang proporsional dengan dimensi gambar
-    final minDim = (width != null && height != null)
-        ? (width! < height! ? width! : height!)
-        : (height ?? width ?? 80.0);
-    final iconSize = (minDim * 0.38).clamp(20.0, 48.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double w = (width != null && width! > 0 && width!.isFinite)
+            ? width!
+            : (constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                ? constraints.maxWidth
+                : 90.0);
+        final double h = (height != null && height! > 0 && height!.isFinite)
+            ? height!
+            : (constraints.maxHeight.isFinite && constraints.maxHeight > 0
+                ? constraints.maxHeight
+                : 90.0);
 
-    return Container(
-      width: width,
-      height: height,
-      color: const Color(0xFFF3F4F6),
-      child: Center(
-        child: Icon(
-          iconData,
-          size: iconSize,
-          color: const Color(0xFF9CA3AF),
-        ),
-      ),
+        final minDim = w < h ? w : h;
+        // Icon lebih besar (52% dari minDim) agar tidak terlalu banyak space kosong
+        final iconSize = (minDim * 0.52).clamp(28.0, 64.0);
+
+        return Container(
+          width: width,
+          height: height,
+          color: AppTheme.softPinkBackground,
+          child: Center(
+            child: Icon(
+              iconData,
+              size: iconSize,
+              color: AppTheme.primaryPinkDark,
+            ),
+          ),
+        );
+      },
     );
   }
 }

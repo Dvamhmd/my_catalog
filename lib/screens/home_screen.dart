@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../dialogs/add_edit_menu_dialog.dart';
 import '../dialogs/manage_sub_category_dialog.dart';
 import '../dialogs/menu_detail_dialog.dart';
@@ -7,10 +8,15 @@ import '../models/category_type.dart';
 import '../models/layout_mode.dart';
 import '../models/menu_item_model.dart';
 import '../models/sub_category_model.dart';
+import '../models/sub_category_view_mode.dart';
 import '../services/database_service.dart';
 import '../services/preference_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../widgets/custom_image_view.dart';
+import '../widgets/folder_card_large.dart';
+import '../widgets/folder_card_medium.dart';
+import '../widgets/folder_card_small.dart';
 import '../widgets/menu_card_large.dart';
 import '../widgets/menu_card_medium.dart';
 import '../widgets/menu_card_small.dart';
@@ -28,9 +34,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   CategoryType _activeType = CategoryType.food;
   LayoutMode _layoutMode = LayoutMode.medium; // Default 2 columns (Sedang)
+  SubCategoryViewMode _subCategoryViewMode = SubCategoryViewMode.tab; // Default Tab
 
   List<SubCategoryModel> _foodSubCategories = const [];
   List<SubCategoryModel> _drinkSubCategories = const [];
+  Map<int, int> _subCategoryCounts = {};
 
   SubCategoryModel? _selectedFoodSubCategory;
   SubCategoryModel? _selectedDrinkSubCategory;
@@ -65,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       setState(() {
         _activeType = _tabController.index == 0 ? CategoryType.food : CategoryType.drink;
       });
+      _loadSubCategories();
       _loadMenuItems();
     }
   }
@@ -73,7 +82,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     setState(() => _isLoading = true);
     try {
       final savedMode = await PreferenceService.getLayoutMode();
+      final savedViewMode = await PreferenceService.getSubCategoryViewMode();
       _layoutMode = savedMode;
+      _subCategoryViewMode = savedViewMode;
 
       await _db.initialize();
       await _loadSubCategories();
@@ -91,11 +102,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     try {
       final foodSubs = await _db.getSubCategories(CategoryType.food);
       final drinkSubs = await _db.getSubCategories(CategoryType.drink);
+      final counts = await _db.getSubCategoryItemCounts(_activeType);
 
       if (mounted) {
         setState(() {
           _foodSubCategories = foodSubs;
           _drinkSubCategories = drinkSubs;
+          _subCategoryCounts = counts;
 
           // Verify active selected sub categories still exist
           if (_selectedFoodSubCategory != null &&
@@ -125,9 +138,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         searchQuery: _searchController.text.trim().isEmpty ? null : _searchController.text.trim(),
       );
 
+      final counts = await _db.getSubCategoryItemCounts(_activeType);
+
       if (mounted) {
         setState(() {
           _menuItems = items;
+          _subCategoryCounts = counts;
           _isLoading = false;
         });
       }
@@ -155,6 +171,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     PreferenceService.saveLayoutMode(mode);
   }
 
+  void _changeSubCategoryViewMode(SubCategoryViewMode mode) {
+    setState(() {
+      _subCategoryViewMode = mode;
+    });
+    PreferenceService.saveSubCategoryViewMode(mode);
+  }
+
   List<SubCategoryModel> get _currentSubCategories =>
       _activeType == CategoryType.food ? _foodSubCategories : _drinkSubCategories;
 
@@ -174,6 +197,550 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // ==================== DIALOG TRIGGERS ====================
 
+  final ImagePicker _imagePicker = ImagePicker();
+
+  Future<void> _pickImageSource(ImageSource source, {required Function(String path) onPicked}) async {
+    try {
+      final XFile? file = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (file != null) {
+        onPicked(file.path);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memilih foto: $e'),
+            backgroundColor: AppTheme.dangerRed,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showImageSourceSheet({
+    required Function(String path) onPicked,
+    VoidCallback? onRemove,
+    bool hasPhoto = false,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Text(
+                  'Pilih Foto / Icon Kategori',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softPinkBackground,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.camera_alt_rounded, color: AppTheme.primaryPink),
+                ),
+                title: const Text(
+                  'Ambil dari Kamera',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImageSource(ImageSource.camera, onPicked: onPicked);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softPinkBackground,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_library_rounded, color: AppTheme.primaryPink),
+                ),
+                title: const Text(
+                  'Pilih dari Galeri',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImageSource(ImageSource.gallery, onPicked: onPicked);
+                },
+              ),
+              if (hasPhoto && onRemove != null)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.dangerRed.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerRed),
+                  ),
+                  title: const Text(
+                    'Hapus Foto (Gunakan Icon Default)',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: AppTheme.dangerRed,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onRemove();
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openPhotoPickerForCategory(SubCategoryModel subCategory) {
+    final hasPhoto = subCategory.imagePath != null && subCategory.imagePath!.isNotEmpty;
+    _showImageSourceSheet(
+      hasPhoto: hasPhoto,
+      onPicked: (path) async {
+        final updated = subCategory.copyWith(imagePath: path);
+        await _db.updateSubCategory(updated);
+        await _loadSubCategories();
+        _showFeedback('Foto kategori "${subCategory.name}" berhasil diubah');
+      },
+      onRemove: () async {
+        final updated = subCategory.copyWith(clearImage: true);
+        await _db.updateSubCategory(updated);
+        await _loadSubCategories();
+        _showFeedback('Foto kategori dikembalikan ke icon default');
+      },
+    );
+  }
+
+  void _showCategoryActionSheet(SubCategoryModel subCategory) {
+    final count = _subCategoryCounts[subCategory.id] ?? 0;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bottomSheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle bar
+                Container(
+                  width: 38,
+                  height: 4.5,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+
+                // Category Preview Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: AppTheme.softPinkBackground,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFFFFD1DC),
+                            width: 1,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(11),
+                          child: CustomImageView(
+                            imagePath: subCategory.imagePath,
+                            type: subCategory.type,
+                            isCategory: true,
+                            width: 46,
+                            height: 46,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              subCategory.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Kategori ${_activeType.displayName} • $count menu',
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.textMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: Color(0xFFF0F0F2)),
+                const SizedBox(height: 4),
+
+                // Action 1: Ubah Nama Kategori
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                  leading: Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: AppTheme.softPinkBackground,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      color: AppTheme.primaryPinkDark,
+                      size: 20,
+                    ),
+                  ),
+                  title: const Text(
+                    'Ubah Nama Kategori',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(bottomSheetContext);
+                    _openEditSubCategoryDialog(subCategory);
+                  },
+                ),
+
+                // Action 2: Ganti Foto Kategori
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                  leading: Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: AppTheme.softPinkBackground,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.add_a_photo_outlined,
+                      color: AppTheme.primaryPinkDark,
+                      size: 20,
+                    ),
+                  ),
+                  title: const Text(
+                    'Ganti Foto Kategori',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(bottomSheetContext);
+                    _openPhotoPickerForCategory(subCategory);
+                  },
+                ),
+
+                // Action 3: Hapus Kategori
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                  leading: Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: AppTheme.dangerRed.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppTheme.dangerRed,
+                      size: 20,
+                    ),
+                  ),
+                  title: const Text(
+                    'Hapus Kategori',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: AppTheme.dangerRed,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(bottomSheetContext);
+                    _confirmDeleteSubCategory(subCategory);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteSubCategory(SubCategoryModel subCategory) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Hapus Kategori?',
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin menghapus kategori "${subCategory.name}"? Semua menu di dalam kategori ini juga akan ikut terhapus.',
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 13,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: AppTheme.textMedium)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.dangerRed),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              if (subCategory.id != null) {
+                await _db.deleteSubCategory(subCategory.id!);
+                await _loadSubCategories();
+                await _loadMenuItems();
+                if (mounted) {
+                  _showFeedback('Kategori "${subCategory.name}" dihapus', isError: true);
+                }
+              }
+            },
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openEditSubCategoryDialog(SubCategoryModel subCategory) {
+    final nameController = TextEditingController(text: subCategory.name);
+    String? currentImagePath = subCategory.imagePath;
+    bool clearImage = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          final hasImg = !clearImage && (currentImagePath != null && currentImagePath!.isNotEmpty);
+
+          return AlertDialog(
+            backgroundColor: AppTheme.surfaceWhite,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text(
+              'Ubah Kategori',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    _showImageSourceSheet(
+                      hasPhoto: hasImg,
+                      onPicked: (path) {
+                        setDialogState(() {
+                          currentImagePath = path;
+                          clearImage = false;
+                        });
+                      },
+                      onRemove: () {
+                        setDialogState(() {
+                          currentImagePath = null;
+                          clearImage = true;
+                        });
+                      },
+                    );
+                  },
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppTheme.softPinkBackground,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFFD1DC), width: 1.5),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: CustomImageView(
+                            imagePath: hasImg ? currentImagePath : null,
+                            type: subCategory.type,
+                            isCategory: true,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: const BoxDecoration(
+                          color: AppTheme.primaryPink,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt_rounded,
+                          size: 13,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: () {
+                    _showImageSourceSheet(
+                      hasPhoto: hasImg,
+                      onPicked: (path) {
+                        setDialogState(() {
+                          currentImagePath = path;
+                          clearImage = false;
+                        });
+                      },
+                      onRemove: () {
+                        setDialogState(() {
+                          currentImagePath = null;
+                          clearImage = true;
+                        });
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.photo_camera_outlined, size: 16, color: AppTheme.primaryPink),
+                  label: Text(
+                    hasImg ? 'Ganti Foto' : 'Pilih Foto',
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryPink,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: nameController,
+                  textCapitalization: TextCapitalization.words,
+                  style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'Nama Kategori',
+                    prefixIcon: Icon(subCategory.type.icon, color: AppTheme.primaryPinkLight),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Batal', style: TextStyle(color: AppTheme.textMedium)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final newName = nameController.text.trim();
+                  if (newName.isNotEmpty) {
+                    Navigator.pop(ctx);
+                    final updated = subCategory.copyWith(
+                      name: newName,
+                      imagePath: currentImagePath,
+                      clearImage: clearImage,
+                    );
+                    await _db.updateSubCategory(updated);
+                    await _loadSubCategories();
+                    await _loadMenuItems();
+                    _showFeedback('Kategori "$newName" berhasil diperbarui');
+                  }
+                },
+                child: const Text('Simpan'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _openManageSubCategories() {
     showModalBottomSheet(
       context: context,
@@ -183,10 +750,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return ManageSubCategoryDialog(
           activeType: _activeType,
           subCategories: _currentSubCategories,
-          onAdd: (name) async {
+          onAdd: (name, imagePath) async {
             final newSub = SubCategoryModel(
               name: name,
               type: _activeType,
+              imagePath: imagePath,
             );
             await _db.insertSubCategory(newSub);
             await _loadSubCategories();
@@ -194,12 +762,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Navigator.pop(bottomSheetContext);
             }
             if (mounted) {
-              _openManageSubCategories();
-              _showFeedback('Sub kategori "$name" berhasil ditambahkan');
+              _showFeedback('Kategori "$name" berhasil ditambahkan');
             }
           },
-          onEdit: (subCategory, newName) async {
-            final updated = subCategory.copyWith(name: newName);
+          onEdit: (subCategory, newName, newImagePath, clearImage) async {
+            final updated = subCategory.copyWith(
+              name: newName,
+              imagePath: newImagePath,
+              clearImage: clearImage,
+            );
             await _db.updateSubCategory(updated);
             await _loadSubCategories();
             await _loadMenuItems();
@@ -207,8 +778,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Navigator.pop(bottomSheetContext);
             }
             if (mounted) {
-              _openManageSubCategories();
-              _showFeedback('Nama sub kategori diperbarui');
+              _showFeedback('Kategori "$newName" diperbarui');
             }
           },
           onDelete: (subCategory) async {
@@ -220,8 +790,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Navigator.pop(bottomSheetContext);
               }
               if (mounted) {
-                _openManageSubCategories();
-                _showFeedback('Sub kategori dihapus', isError: true);
+                _showFeedback('Kategori dihapus', isError: true);
               }
             }
           },
@@ -230,7 +799,173 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  void _openAddMenuDialog({MenuItemModel? itemToEdit}) {
+  void _openAddSubCategoryQuick() {
+    final nameController = TextEditingController();
+    String? categoryImagePath;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          final isFood = _activeType == CategoryType.food;
+          final categoryIcon = _activeType.icon;
+
+          return AlertDialog(
+            backgroundColor: AppTheme.surfaceWhite,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softPinkBackground,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(categoryIcon, color: AppTheme.primaryPinkDark, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Tambah Kategori ${_activeType.displayName}',
+                  style: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    _showImageSourceSheet(
+                      hasPhoto: categoryImagePath != null,
+                      onPicked: (path) {
+                        setDialogState(() {
+                          categoryImagePath = path;
+                        });
+                      },
+                      onRemove: () {
+                        setDialogState(() {
+                          categoryImagePath = null;
+                        });
+                      },
+                    );
+                  },
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      Container(
+                        width: 76,
+                        height: 76,
+                        decoration: BoxDecoration(
+                          color: AppTheme.softPinkBackground,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: categoryImagePath != null ? AppTheme.primaryPink : const Color(0xFFFFD1DC),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: CustomImageView(
+                            imagePath: categoryImagePath,
+                            type: _activeType,
+                            isCategory: true,
+                            width: 76,
+                            height: 76,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: const BoxDecoration(
+                          color: AppTheme.primaryPink,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt_rounded,
+                          size: 13,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: () {
+                    _showImageSourceSheet(
+                      hasPhoto: categoryImagePath != null,
+                      onPicked: (path) {
+                        setDialogState(() {
+                          categoryImagePath = path;
+                        });
+                      },
+                      onRemove: () {
+                        setDialogState(() {
+                          categoryImagePath = null;
+                        });
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.photo_camera_outlined, size: 16, color: AppTheme.primaryPink),
+                  label: Text(
+                    categoryImagePath != null ? 'Ganti Foto' : 'Pilih Foto (Opsional)',
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryPink,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'Nama Kategori',
+                    hintText: isFood ? 'Contoh: Makanan Utama, Snack...' : 'Contoh: Kopi, Jus Segar...',
+                    prefixIcon: Icon(categoryIcon, color: AppTheme.primaryPinkLight),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Batal', style: TextStyle(color: AppTheme.textMedium)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final name = nameController.text.trim();
+                  if (name.isNotEmpty) {
+                    Navigator.pop(ctx);
+                    final newSub = SubCategoryModel(
+                      name: name,
+                      type: _activeType,
+                      imagePath: categoryImagePath,
+                    );
+                    await _db.insertSubCategory(newSub);
+                    await _loadSubCategories();
+                    _showFeedback('Kategori "$name" berhasil dibuat');
+                  }
+                },
+                child: const Text('Simpan Kategori'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _openAddMenuDialog({MenuItemModel? itemToEdit, SubCategoryModel? presetSubCategory}) {
     if (_currentSubCategories.isEmpty) {
       showDialog(
         context: context,
@@ -238,11 +973,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           backgroundColor: AppTheme.surfaceWhite,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: const Text(
-            'Buat Sub Kategori Dahulu',
+            'Buat Kategori Dahulu',
             style: TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w700),
           ),
           content: Text(
-            'Untuk menambahkan menu ${_activeType.displayName}, Anda perlu membuat minimal satu sub kategori terlebih dahulu.',
+            'Untuk menambahkan menu ${_activeType.displayName}, Anda perlu membuat minimal satu kategori terlebih dahulu.',
             style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 13),
           ),
           actions: [
@@ -255,13 +990,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Navigator.pop(ctx);
                 _openManageSubCategories();
               },
-              child: const Text('Buat Sub Kategori'),
+              child: const Text('Buat Kategori'),
             ),
           ],
         ),
       );
       return;
     }
+
+    final defaultSub = presetSubCategory ?? _currentSelectedSubCategory ?? _currentSubCategories.first;
 
     showModalBottomSheet<MenuItemModel>(
       context: context,
@@ -271,7 +1008,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return AddEditMenuDialog(
           activeType: _activeType,
           subCategories: _currentSubCategories,
-          defaultSubCategory: _currentSelectedSubCategory ?? _currentSubCategories.first,
+          defaultSubCategory: defaultSub,
           itemToEdit: itemToEdit,
         );
       },
@@ -284,6 +1021,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           await _db.insertMenuItem(resultItem);
           _showFeedback('Menu "${resultItem.name}" berhasil ditambahkan');
         }
+        await _loadSubCategories();
         await _loadMenuItems();
       }
     });
@@ -335,6 +1073,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Navigator.pop(ctx);
               if (item.id != null) {
                 await _db.deleteMenuItem(item.id!);
+                await _loadSubCategories();
                 await _loadMenuItems();
                 _showFeedback('Menu berhasil dihapus', isError: true);
               }
@@ -371,20 +1110,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final horizontalPad = Responsive.horizontalPadding(context);
+    final isSearching = _searchController.text.trim().isNotEmpty;
+    final isCategoryViewMode = _subCategoryViewMode == SubCategoryViewMode.category;
+    final isViewingInsideCategory = isCategoryViewMode && _currentSelectedSubCategory != null && !isSearching;
+    final isViewingCategoryList = isCategoryViewMode && _currentSelectedSubCategory == null && !isSearching;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          // Sub Category Pills Horizontal Bar
-          _buildSubCategoryBar(),
+          // Category Pills Horizontal Bar (Shown only in Tab Mode)
+          if (_subCategoryViewMode == SubCategoryViewMode.tab && !isSearching)
+            _buildSubCategoryBar(),
+
+          // Category Breadcrumb (Shown only in Category Mode when inside a category)
+          if (isViewingInsideCategory)
+            _buildCategoryBreadcrumb(),
 
           // Search Bar (if opened)
           if (_isSearchOpen) _buildSearchBar(),
 
-          // Info Header (Count & Layout summary)
-          _buildStatusBar(),
+          // Status Bar (View Mode Toggle & Layout Mode Switcher)
+          _buildStatusBar(isViewingCategoryList: isViewingCategoryList),
 
           // Main Catalog Grid / List
           Expanded(
@@ -399,29 +1147,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ? const Center(
                       child: CircularProgressIndicator(color: AppTheme.primaryPink),
                     )
-                  : _menuItems.isEmpty
-                      ? _buildEmptyState()
-                      : _buildMenuGrid(horizontalPad),
+                  : isViewingCategoryList
+                      ? (_currentSubCategories.isEmpty
+                          ? _buildEmptyCategoryState()
+                          : _buildCategoryGrid(horizontalPad))
+                      : (_menuItems.isEmpty
+                          ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
+                          : _buildMenuGrid(horizontalPad)),
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.primaryPink,
-        foregroundColor: Colors.white,
-        elevation: 3,
-        highlightElevation: 6,
-        icon: const Icon(Icons.add_rounded, size: 22),
-        label: Text(
-          'Tambah ${_activeType.displayName}',
-          style: const TextStyle(
-            fontFamily: AppTheme.fontFamily,
-            fontWeight: FontWeight.w700,
-            fontSize: 13.5,
-          ),
-        ),
-        onPressed: () => _openAddMenuDialog(),
-      ),
+      floatingActionButton: _buildFloatingActionButton(isViewingCategoryList: isViewingCategoryList),
     );
   }
 
@@ -431,13 +1168,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return AppBar(
       title: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              'assets/images/app_logo.png',
+              width: 28,
+              height: 28,
+              fit: BoxFit.cover,
             ),
-            child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 10),
           const Text('My Catalog'),
@@ -458,6 +1196,31 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 _loadMenuItems();
               }
             });
+          },
+        ),
+        IconButton(
+          tooltip: _subCategoryViewMode == SubCategoryViewMode.tab
+              ? 'Tampilan Tab'
+              : 'Tampilan Kategori',
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: ScaleTransition(scale: anim, child: child),
+            ),
+            child: Icon(
+              _subCategoryViewMode == SubCategoryViewMode.tab
+                  ? Icons.tab_rounded
+                  : Icons.category_rounded,
+              key: ValueKey(_subCategoryViewMode),
+              color: Colors.white,
+            ),
+          ),
+          onPressed: () {
+            final nextMode = _subCategoryViewMode == SubCategoryViewMode.tab
+                ? SubCategoryViewMode.category
+                : SubCategoryViewMode.tab;
+            _changeSubCategoryViewMode(nextMode);
           },
         ),
         const SizedBox(width: 8),
@@ -493,7 +1256,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('🍱', style: TextStyle(fontSize: 15)),
+                    Icon(Icons.restaurant_rounded, size: 16),
                     SizedBox(width: 6),
                     Text('Makanan'),
                   ],
@@ -503,7 +1266,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('🍹', style: TextStyle(fontSize: 15)),
+                    Icon(Icons.local_bar_rounded, size: 16),
                     SizedBox(width: 6),
                     Text('Minuman'),
                   ],
@@ -516,7 +1279,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // ==================== SUB CATEGORY BAR ====================
+  // ==================== CATEGORY BAR (TAB MODE) ====================
 
   Widget _buildSubCategoryBar() {
     final subCategories = _currentSubCategories;
@@ -537,25 +1300,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         children: [
           _buildFilterChip(
             label: 'Semua',
+            count: null,
             isSelected: selectedSub == null,
             onTap: () => _selectSubCategory(null),
           ),
           const SizedBox(width: 8),
           ...subCategories.map((sub) {
             final isSelected = selectedSub?.id == sub.id;
+            final count = _subCategoryCounts[sub.id] ?? 0;
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: _buildFilterChip(
                 label: sub.name,
+                count: count,
                 isSelected: isSelected,
                 onTap: () => _selectSubCategory(sub),
               ),
             );
           }),
           ActionChip(
-            avatar: const Icon(Icons.add_rounded, size: 16, color: AppTheme.primaryPink),
+            avatar: const Icon(Icons.settings_outlined, size: 15, color: AppTheme.primaryPink),
             label: const Text(
-              'Sub Kategori',
+              'Kelola Kategori',
               style: TextStyle(
                 fontFamily: AppTheme.fontFamily,
                 fontSize: 12,
@@ -567,7 +1333,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             side: const BorderSide(color: Color(0xFFFFD1DC), width: 1),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            onPressed: _openManageSubCategories,
+            onPressed: () => _openManageSubCategories(),
           ),
         ],
       ),
@@ -576,12 +1342,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildFilterChip({
     required String label,
+    int? count,
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    final text = count != null ? '$label ($count)' : label;
     return FilterChip(
       label: Text(
-        label,
+        text,
         style: TextStyle(
           fontFamily: AppTheme.fontFamily,
           fontSize: 12,
@@ -600,6 +1368,80 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       onSelected: (_) => onTap(),
+    );
+  }
+
+  // ==================== CATEGORY BREADCRUMB (INSIDE CATEGORY) ====================
+
+  Widget _buildCategoryBreadcrumb() {
+    final sub = _currentSelectedSubCategory;
+    if (sub == null) return const SizedBox.shrink();
+
+    final categoryIcon = _activeType.icon;
+    final count = _menuItems.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFFFEBF0), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: () => _selectSubCategory(null),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppTheme.softPinkBackground,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFD1DC), width: 1),
+              ),
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                size: 18,
+                color: AppTheme.primaryPinkDark,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Icon(categoryIcon, size: 18, color: AppTheme.primaryPink),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              sub.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textDark,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F5F6),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$count menu',
+              style: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMedium,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -634,34 +1476,50 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // ==================== STATUS & LAYOUT INFO BAR ====================
+  // ==================== STATUS & CONTROLS BAR ====================
 
-  Widget _buildStatusBar() {
+  Widget _buildStatusBar({required bool isViewingCategoryList}) {
     final subName = _currentSelectedSubCategory?.name ?? 'Semua';
+    final isSearching = _searchController.text.trim().isNotEmpty;
+
+    String statusText;
+    if (isSearching) {
+      statusText = '${_menuItems.length} hasil pencarian';
+    } else if (isViewingCategoryList) {
+      // Formatted as requested: "3 Kategori Makanan" or "3 Kategori Minuman"
+      statusText = '${_currentSubCategories.length} Kategori ${_activeType.displayName}';
+    } else {
+      statusText = '$subName (${_menuItems.length} menu)';
+    }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Text(
-                '$subName (${_menuItems.length} menu)',
-                style: const TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textMedium,
-                ),
+          // Left Status Label
+          Expanded(
+            child: Text(
+              statusText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMedium,
               ),
-            ],
+            ),
           ),
+          const SizedBox(width: 8),
+
+          // Right Controls: Layout Mode Switcher (1 baris, 2 jajar, 3 jajar)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
               color: AppTheme.softPinkBackground,
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFFE0E6), width: 0.8),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -679,25 +1537,103 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildLayoutIconButton(LayoutMode mode) {
     final isSelected = _layoutMode == mode;
-    return GestureDetector(
-      onTap: () => _changeLayoutMode(mode),
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryPink : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Icon(
-          mode.icon,
-          size: 15,
-          color: isSelected ? Colors.white : AppTheme.textLight,
+    return Tooltip(
+      message: '${mode.label} (${mode.subtitle})',
+      child: GestureDetector(
+        onTap: () => _changeLayoutMode(mode),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryPink : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            mode.icon,
+            size: 15,
+            color: isSelected ? Colors.white : AppTheme.textLight,
+          ),
         ),
       ),
     );
   }
 
-  // ==================== MENU GRID / LIST ====================
+  // ==================== CATEGORY GRID / LIST (PERBARIS, JAJAR 2, JAJAR 3) ====================
+
+  Widget _buildCategoryGrid(double horizontalPad) {
+    final subCategories = _currentSubCategories;
+
+    if (_layoutMode == LayoutMode.large) {
+      // 1 Kolom / Perbaris (List View)
+      return ListView.separated(
+        padding: EdgeInsets.only(
+          left: horizontalPad,
+          right: horizontalPad,
+          top: 4,
+          bottom: 90,
+        ),
+        itemCount: subCategories.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final sub = subCategories[index];
+          final count = _subCategoryCounts[sub.id] ?? 0;
+          return FolderCardLarge(
+            key: ValueKey(sub.id),
+            subCategory: sub,
+            itemCount: count,
+            onTap: () => _selectSubCategory(sub),
+            onLongPress: () => _showCategoryActionSheet(sub),
+          );
+        },
+      );
+    }
+
+    // 2 Kolom (Jajar 2) or 3 Kolom (Jajar 3)
+    final aspectRatio = Responsive.getCardAspectRatio(
+      context: context,
+      columns: _layoutMode.columns,
+    );
+
+    return GridView.builder(
+      padding: EdgeInsets.only(
+        left: horizontalPad,
+        right: horizontalPad,
+        top: 4,
+        bottom: 90,
+      ),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _layoutMode.columns,
+        crossAxisSpacing: _layoutMode == LayoutMode.small ? 8 : 12,
+        mainAxisSpacing: _layoutMode == LayoutMode.small ? 8 : 12,
+        childAspectRatio: aspectRatio,
+      ),
+      itemCount: subCategories.length,
+      itemBuilder: (context, index) {
+        final sub = subCategories[index];
+        final count = _subCategoryCounts[sub.id] ?? 0;
+
+        if (_layoutMode == LayoutMode.small) {
+          return FolderCardSmall(
+            key: ValueKey(sub.id),
+            subCategory: sub,
+            itemCount: count,
+            onTap: () => _selectSubCategory(sub),
+            onLongPress: () => _showCategoryActionSheet(sub),
+          );
+        }
+
+        return FolderCardMedium(
+          key: ValueKey(sub.id),
+          subCategory: sub,
+          itemCount: count,
+          onTap: () => _selectSubCategory(sub),
+          onLongPress: () => _showCategoryActionSheet(sub),
+        );
+      },
+    );
+  }
+
+  // ==================== MENU GRID / LIST (PERBARIS, JAJAR 2, JAJAR 3) ====================
 
   Widget _buildMenuGrid(double horizontalPad) {
     final aspectRatio = Responsive.getCardAspectRatio(
@@ -721,14 +1657,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             key: ValueKey(item.id),
             item: item,
             onTap: () => _openDetailDialog(item),
-            onEdit: () => _openAddMenuDialog(itemToEdit: item),
-            onDelete: () => _confirmDeleteMenu(item),
-            onToggleStatus: () async {
-              if (item.id != null) {
-                await _db.toggleAvailability(item.id!, item.isAvailable);
-                await _loadMenuItems();
-              }
-            },
           );
         },
       );
@@ -755,14 +1683,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             key: ValueKey(item.id),
             item: item,
             onTap: () => _openDetailDialog(item),
-            onEdit: () => _openAddMenuDialog(itemToEdit: item),
-            onDelete: () => _confirmDeleteMenu(item),
-            onToggleStatus: () async {
-              if (item.id != null) {
-                await _db.toggleAvailability(item.id!, item.isAvailable);
-                await _loadMenuItems();
-              }
-            },
           );
         }
 
@@ -770,22 +1690,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           key: ValueKey(item.id),
           item: item,
           onTap: () => _openDetailDialog(item),
-          onEdit: () => _openAddMenuDialog(itemToEdit: item),
-          onDelete: () => _confirmDeleteMenu(item),
-          onToggleStatus: () async {
-            if (item.id != null) {
-              await _db.toggleAvailability(item.id!, item.isAvailable);
-              await _loadMenuItems();
-            }
-          },
         );
       },
     );
   }
 
-  // ==================== EMPTY STATE ====================
+  // ==================== EMPTY STATES ====================
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyCategoryState() {
+    final categoryIcon = _activeType.icon;
+
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -798,16 +1712,66 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 color: AppTheme.softPinkBackground,
                 shape: BoxShape.circle,
               ),
-              child: Text(
-                _activeType.emoji,
-                style: const TextStyle(fontSize: 48),
+              child: Icon(categoryIcon, size: 48, color: AppTheme.primaryPinkDark),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Belum ada kategori ${_activeType.displayName.toLowerCase()}',
+              style: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textDark,
               ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Buat kategori untuk mengelompokkan katalog menu Anda.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 13,
+                color: AppTheme.textMedium,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text('Tambah Kategori ${_activeType.displayName} Baru'),
+              onPressed: _openAddSubCategoryQuick,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyMenuState({bool isInsideCategory = false}) {
+    final subName = _currentSelectedSubCategory?.name;
+    final categoryIcon = _activeType.icon;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: AppTheme.softPinkBackground,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(categoryIcon, size: 48, color: AppTheme.primaryPinkDark),
             ),
             const SizedBox(height: 16),
             Text(
               _searchController.text.isNotEmpty
                   ? 'Menu tidak ditemukan'
-                  : 'Belum ada menu ${_activeType.displayName.toLowerCase()}',
+                  : isInsideCategory
+                      ? 'Belum ada menu di kategori "$subName"'
+                      : 'Belum ada menu ${_activeType.displayName.toLowerCase()}',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: AppTheme.fontFamily,
                 fontSize: 16,
@@ -818,8 +1782,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             const SizedBox(height: 6),
             Text(
               _searchController.text.isNotEmpty
-                  ? 'Coba kata kunci lain'
-                  : 'Mulai tambahkan menu favorit untuk katalog Anda.',
+                  ? 'Coba kata kunci lain atau bersihkan pencarian.'
+                  : isInsideCategory
+                      ? 'Tambahkan menu baru langsung ke dalam kategori ini.'
+                      : 'Mulai tambahkan menu favorit untuk katalog Anda.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: AppTheme.fontFamily,
@@ -830,12 +1796,56 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             const SizedBox(height: 20),
             ElevatedButton.icon(
               icon: const Icon(Icons.add_rounded, size: 18),
-              label: Text('Tambah ${_activeType.displayName} Baru'),
-              onPressed: () => _openAddMenuDialog(),
+              label: Text(
+                isInsideCategory
+                    ? 'Tambah Menu di Kategori Ini'
+                    : 'Tambah ${_activeType.displayName} Baru',
+              ),
+              onPressed: () => _openAddMenuDialog(presetSubCategory: _currentSelectedSubCategory),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ==================== FLOATING ACTION BUTTON ====================
+
+  Widget _buildFloatingActionButton({required bool isViewingCategoryList}) {
+    if (isViewingCategoryList) {
+      return FloatingActionButton.extended(
+        backgroundColor: AppTheme.primaryPink,
+        foregroundColor: Colors.white,
+        elevation: 3,
+        highlightElevation: 6,
+        icon: const Icon(Icons.add_rounded, size: 20),
+        label: Text(
+          'Tambah Kategori ${_activeType.displayName}',
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+          ),
+        ),
+        onPressed: _openAddSubCategoryQuick,
+      );
+    }
+
+    return FloatingActionButton.extended(
+      backgroundColor: AppTheme.primaryPink,
+      foregroundColor: Colors.white,
+      elevation: 3,
+      highlightElevation: 6,
+      icon: const Icon(Icons.add_rounded, size: 22),
+      label: Text(
+        'Tambah ${_activeType.displayName}',
+        style: const TextStyle(
+          fontFamily: AppTheme.fontFamily,
+          fontWeight: FontWeight.w700,
+          fontSize: 13.5,
+        ),
+      ),
+      onPressed: () => _openAddMenuDialog(presetSubCategory: _currentSelectedSubCategory),
     );
   }
 }

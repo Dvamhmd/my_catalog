@@ -7,17 +7,11 @@ import 'custom_image_view.dart';
 class MenuCardMedium extends StatelessWidget {
   final MenuItemModel item;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onToggleStatus;
 
   const MenuCardMedium({
     super.key,
     required this.item,
     required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onToggleStatus,
   });
 
   @override
@@ -50,7 +44,7 @@ class MenuCardMedium extends StatelessWidget {
             children: [
               // Image Top Section
               Expanded(
-                flex: 11,
+                flex: 14,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -83,7 +77,7 @@ class MenuCardMedium extends StatelessWidget {
                           ],
                         ),
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 85),
+                          constraints: const BoxConstraints(maxWidth: 90),
                           child: Text(
                             item.subCategoryName,
                             maxLines: 1,
@@ -93,27 +87,6 @@ class MenuCardMedium extends StatelessWidget {
                               fontSize: 9.5,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.primaryPinkDark,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Quick Action Menu on Top Right
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Material(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () => _showActionSheet(context),
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: Icon(
-                              Icons.more_horiz_rounded,
-                              size: 16,
-                              color: AppTheme.textMedium,
                             ),
                           ),
                         ),
@@ -149,28 +122,28 @@ class MenuCardMedium extends StatelessWidget {
 
               // Details Bottom Section
               Expanded(
-                flex: 9,
+                flex: 5,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       // Title
                       Text(
                         item.name,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: AppTheme.fontFamily,
-                          fontSize: 12.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: item.isAvailable
                               ? AppTheme.textDark
                               : AppTheme.textLight,
-                          height: 1.2,
                         ),
                       ),
+                      const SizedBox(height: 2),
 
                       // Price
                       FittedBox(
@@ -180,8 +153,8 @@ class MenuCardMedium extends StatelessWidget {
                           Formatters.currency(item.price),
                           style: const TextStyle(
                             fontFamily: AppTheme.fontFamily,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
                             color: AppTheme.primaryPink,
                           ),
                         ),
@@ -194,93 +167,6 @@ class MenuCardMedium extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  void _showActionSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surfaceWhite,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                  child: Row(
-                    children: [
-                      Text(
-                        item.name,
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                ListTile(
-                  leading: Icon(
-                    item.isAvailable ? Icons.remove_circle_outline : Icons.check_circle_outline,
-                    color: item.isAvailable ? AppTheme.warningOrange : AppTheme.successGreen,
-                  ),
-                  title: Text(
-                    item.isAvailable ? 'Tandai Menu Habis' : 'Tandai Menu Tersedia',
-                    style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onToggleStatus();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined, color: AppTheme.primaryPink),
-                  title: const Text(
-                    'Edit Menu',
-                    style: TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onEdit();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerRed),
-                  title: const Text(
-                    'Hapus Menu',
-                    style: TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 14,
-                      color: AppTheme.dangerRed,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onDelete();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

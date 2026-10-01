@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppTheme {
-  // Brand Color Palette - Soft Pink & Soft White
-  static const Color primaryPink = Color(0xFFFF5D8F); // Vibrant Soft Pink for Headbar & Primary Actions
-  static const Color primaryPinkDark = Color(0xFFE04374);
-  static const Color primaryPinkLight = Color(0xFFFF8FA3);
-  static const Color softPinkBackground = Color(0xFFFFF0F3);
-  static const Color pastelPink = Color(0xFFFFCCD5);
-  static const Color ultraLightPink = Color(0xFFFFF5F7);
+  // Brand Color Palette - Elegant Rose Pink & Soft White
+  static const Color primaryPink = Color(0xFFD84A75); // Elegant Muted Rose Pink (nyaman di mata)
+  static const Color primaryPinkDark = Color(0xFFB52E55); // Deep Rose
+  static const Color primaryPinkLight = Color(0xFFE56E91); // Soft Rose
+  static const Color softPinkBackground = Color(0xFFFFDCE7); // Clear Distinct Soft Pink
+  static const Color pastelPink = Color(0xFFFFCCD8);
+  static const Color ultraLightPink = Color(0xFFFFF7F9);
   
   // Surface & Neutrals
   static const Color surfaceWhite = Color(0xFFFFFFFF);
@@ -16,7 +16,7 @@ class AppTheme {
   static const Color textDark = Color(0xFF1E1B24);
   static const Color textMedium = Color(0xFF5C5765);
   static const Color textLight = Color(0xFF9E9AA7);
-  static const Color textPink = Color(0xFFFF3366);
+  static const Color textPink = Color(0xFFB52E55);
 
   // Status & Accents
   static const Color successGreen = Color(0xFF06D6A0);
@@ -25,13 +25,13 @@ class AppTheme {
 
   // Gradient definitions
   static const LinearGradient pinkGradient = LinearGradient(
-    colors: [Color(0xFFFF5D8F), Color(0xFFFF758F)],
+    colors: [Color(0xFFCE3D68), Color(0xFFDF517D)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient softPinkGradient = LinearGradient(
-    colors: [Color(0xFFFFF0F3), Color(0xFFFFE3E8)],
+    colors: [Color(0xFFFFDCE7), Color(0xFFFFC7D7)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );

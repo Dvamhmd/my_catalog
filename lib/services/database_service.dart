@@ -55,8 +55,15 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute('ALTER TABLE sub_categories ADD COLUMN image_path TEXT;');
+          } catch (_) {}
+        }
+      },
     );
   }
 
@@ -66,6 +73,7 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
+        image_path TEXT,
         created_at TEXT NOT NULL
       )
     ''');
@@ -235,11 +243,11 @@ class DatabaseService {
   Future<void> _loadToCacheFromSqlite() async {
     if (_database == null) return;
     try {
-      final subMaps = await _database!.query('sub_categories', orderBy: 'id ASC');
+      final subMaps = await _database!.query('sub_categories', orderBy: 'name COLLATE NOCASE ASC');
       _cachedSubCategories.clear();
       _cachedSubCategories.addAll(subMaps.map((m) => SubCategoryModel.fromMap(m)));
 
-      final menuMaps = await _database!.query('menu_items', orderBy: 'id DESC');
+      final menuMaps = await _database!.query('menu_items', orderBy: 'is_available DESC, name COLLATE NOCASE ASC');
       _cachedMenuItems.clear();
       _cachedMenuItems.addAll(menuMaps.map((m) => MenuItemModel.fromMap(m)));
     } catch (e) {
@@ -406,7 +414,7 @@ class DatabaseService {
     return _cachedSubCategories
         .where((sub) => sub.type == type)
         .toList()
-      ..sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
 
   Future<int> insertSubCategory(SubCategoryModel subCategory) async {
@@ -510,7 +518,14 @@ class DatabaseService {
       }
       return true;
     }).toList()
-      ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+      ..sort((a, b) {
+        // Menu yang tersedia di atas (isAvailable == true), sold out di paling bawah
+        if (a.isAvailable != b.isAvailable) {
+          return a.isAvailable ? -1 : 1;
+        }
+        // Jika status ketersediaan sama, urutkan nama dari A ke Z (case-insensitive)
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
   }
 
   Future<int> getMenuItemCount({
@@ -525,6 +540,19 @@ class DatabaseService {
       return true;
     }).length;
   }
+
+  Future<Map<int, int>> getSubCategoryItemCounts(CategoryType type) async {
+    if (!_isInitialized) await initialize();
+
+    final Map<int, int> counts = {};
+    for (final item in _cachedMenuItems) {
+      if (item.type == type) {
+        counts[item.subCategoryId] = (counts[item.subCategoryId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+
 
   Future<int> insertMenuItem(MenuItemModel item) async {
     if (!_isInitialized) await initialize();

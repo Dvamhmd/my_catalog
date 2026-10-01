@@ -213,7 +213,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
     if (_selectedSubCategory == null || _selectedSubCategory!.id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Pilih sub kategori terlebih dahulu'),
+          content: Text('Pilih kategori terlebih dahulu'),
           backgroundColor: AppTheme.warningOrange,
         ),
       );
@@ -427,9 +427,9 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Sub Kategori Dropdown (Auto sync)
+                    // Kategori Dropdown (Auto sync)
                     const Text(
-                      'Sub Kategori',
+                      'Kategori',
                       style: TextStyle(
                         fontFamily: AppTheme.fontFamily,
                         fontSize: 13,
@@ -450,7 +450,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                           value: _selectedSubCategory,
                           isExpanded: true,
                           hint: const Text(
-                            'Pilih Sub Kategori',
+                            'Pilih Kategori',
                             style: TextStyle(
                               fontFamily: AppTheme.fontFamily,
                               fontSize: 14,

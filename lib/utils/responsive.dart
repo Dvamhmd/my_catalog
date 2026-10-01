@@ -43,18 +43,24 @@ class Responsive {
         if (width < 360) return 1.8 - scaleAdjust;
         return 2.0 - scaleAdjust;
 
+      case 4:
+        // 4 columns
+        if (width > 600) return 0.82 - scaleAdjust;
+        if (width < 360) return 0.60 - scaleAdjust;
+        return 0.68 - scaleAdjust;
+
       case 3:
         // 3 columns (Kecil)
-        if (width > 600) return 0.85 - scaleAdjust;
-        if (width < 360) return 0.58 - scaleAdjust;
-        return 0.64 - scaleAdjust;
+        if (width > 600) return 0.94 - scaleAdjust;
+        if (width < 360) return 0.68 - scaleAdjust;
+        return 0.74 - scaleAdjust;
 
       case 2:
       default:
         // 2 columns (Sedang / Default)
-        if (width > 600) return 1.05 - scaleAdjust;
-        if (width < 360) return 0.70 - scaleAdjust;
-        return 0.78 - scaleAdjust;
+        if (width > 600) return 1.15 - scaleAdjust;
+        if (width < 360) return 0.78 - scaleAdjust;
+        return 0.85 - scaleAdjust;
     }
   }
 }

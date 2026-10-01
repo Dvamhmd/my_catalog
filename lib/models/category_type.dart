@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum CategoryType {
   food,
   drink;
@@ -17,6 +19,28 @@ enum CategoryType {
         return '🍱';
       case CategoryType.drink:
         return '🍹';
+    }
+  }
+
+  /// Icon untuk Kategori (Makanan: Sendok Garpu/Pisau, Minuman: Gelas Martini)
+  IconData get icon {
+    switch (this) {
+      case CategoryType.food:
+        return Icons.restaurant_rounded;
+      case CategoryType.drink:
+        return Icons.local_bar_rounded;
+    }
+  }
+
+  IconData get categoryIcon => icon;
+
+  /// Icon untuk Menu (Makanan: Burger, Minuman: Cup Take Away dengan Sedotan)
+  IconData get menuIcon {
+    switch (this) {
+      case CategoryType.food:
+        return Icons.lunch_dining_rounded;
+      case CategoryType.drink:
+        return Icons.local_drink_rounded;
     }
   }
 

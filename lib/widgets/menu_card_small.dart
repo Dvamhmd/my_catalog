@@ -7,17 +7,11 @@ import 'custom_image_view.dart';
 class MenuCardSmall extends StatelessWidget {
   final MenuItemModel item;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onToggleStatus;
 
   const MenuCardSmall({
     super.key,
     required this.item,
     required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onToggleStatus,
   });
 
   @override
@@ -44,14 +38,13 @@ class MenuCardSmall extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          onLongPress: () => _showActionSheet(context),
           borderRadius: BorderRadius.circular(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Image Top Section
               Expanded(
-                flex: 10,
+                flex: 14,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -93,12 +86,12 @@ class MenuCardSmall extends StatelessWidget {
 
               // Details Bottom Section
               Expanded(
-                flex: 8,
+                flex: 5,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                  padding: const EdgeInsets.fromLTRB(7, 4, 7, 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       Text(
                         item.name,
@@ -106,13 +99,14 @@ class MenuCardSmall extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: AppTheme.fontFamily,
-                          fontSize: 11,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                           color: item.isAvailable
                               ? AppTheme.textDark
                               : AppTheme.textLight,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
@@ -120,8 +114,8 @@ class MenuCardSmall extends StatelessWidget {
                           Formatters.currency(item.price),
                           style: const TextStyle(
                             fontFamily: AppTheme.fontFamily,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
                             color: AppTheme.primaryPink,
                           ),
                         ),
@@ -134,93 +128,6 @@ class MenuCardSmall extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  void _showActionSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surfaceWhite,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                  child: Row(
-                    children: [
-                      Text(
-                        item.name,
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                ListTile(
-                  leading: Icon(
-                    item.isAvailable ? Icons.remove_circle_outline : Icons.check_circle_outline,
-                    color: item.isAvailable ? AppTheme.warningOrange : AppTheme.successGreen,
-                  ),
-                  title: Text(
-                    item.isAvailable ? 'Tandai Menu Habis' : 'Tandai Menu Tersedia',
-                    style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onToggleStatus();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined, color: AppTheme.primaryPink),
-                  title: const Text(
-                    'Edit Menu',
-                    style: TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onEdit();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerRed),
-                  title: const Text(
-                    'Hapus Menu',
-                    style: TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 14,
-                      color: AppTheme.dangerRed,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onDelete();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

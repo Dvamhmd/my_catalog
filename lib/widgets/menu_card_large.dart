@@ -7,17 +7,11 @@ import 'custom_image_view.dart';
 class MenuCardLarge extends StatelessWidget {
   final MenuItemModel item;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onToggleStatus;
 
   const MenuCardLarge({
     super.key,
     required this.item,
     required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onToggleStatus,
   });
 
   @override
@@ -142,21 +136,15 @@ class MenuCardLarge extends StatelessWidget {
                         ),
                       const SizedBox(height: 6),
 
-                      // Price & Status row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            Formatters.currency(item.price),
-                            style: const TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primaryPink,
-                            ),
-                          ),
-                          _buildActionMenu(context),
-                        ],
+                      // Price
+                      Text(
+                        Formatters.currency(item.price),
+                        style: const TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.primaryPink,
+                        ),
                       ),
                     ],
                   ),
@@ -166,72 +154,6 @@ class MenuCardLarge extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildActionMenu(BuildContext context) {
-    return PopupMenuButton<String>(
-      padding: EdgeInsets.zero,
-      icon: const Icon(
-        Icons.more_vert_rounded,
-        size: 20,
-        color: AppTheme.textLight,
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onSelected: (value) {
-        if (value == 'edit') onEdit();
-        if (value == 'delete') onDelete();
-        if (value == 'status') onToggleStatus();
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'status',
-          child: Row(
-            children: [
-              Icon(
-                item.isAvailable ? Icons.remove_circle_outline : Icons.check_circle_outline,
-                size: 18,
-                color: item.isAvailable ? AppTheme.warningOrange : AppTheme.successGreen,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                item.isAvailable ? 'Tandai Habis' : 'Tandai Tersedia',
-                style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'edit',
-          child: Row(
-            children: [
-              Icon(Icons.edit_outlined, size: 18, color: AppTheme.primaryPink),
-              SizedBox(width: 8),
-              Text(
-                'Edit Menu',
-                style: TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 18, color: AppTheme.dangerRed),
-              SizedBox(width: 8),
-              Text(
-                'Hapus Menu',
-                style: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 13,
-                  color: AppTheme.dangerRed,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
