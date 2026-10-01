@@ -46,7 +46,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   List<MenuItemModel> _menuItems = const [];
   bool _isLoading = true;
-  bool _navigatingIntoCategory = true;
 
   bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
@@ -186,16 +185,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   SubCategoryModel? get _currentSelectedSubCategory =>
       _activeType == CategoryType.food ? _selectedFoodSubCategory : _selectedDrinkSubCategory;
 
-  void _selectSubCategory(SubCategoryModel? sub) {
-    setState(() {
-      _navigatingIntoCategory = sub != null;
-      if (_activeType == CategoryType.food) {
-        _selectedFoodSubCategory = sub;
-      } else {
-        _selectedDrinkSubCategory = sub;
+  Future<void> _selectSubCategory(SubCategoryModel? sub) async {
+    try {
+      final items = await _db.getMenuItems(
+        type: _activeType,
+        subCategoryId: sub?.id,
+        searchQuery: _searchController.text.trim().isEmpty ? null : _searchController.text.trim(),
+      );
+      final counts = await _db.getSubCategoryItemCounts(_activeType);
+
+      if (mounted) {
+        setState(() {
+          if (_activeType == CategoryType.food) {
+            _selectedFoodSubCategory = sub;
+          } else {
+            _selectedDrinkSubCategory = sub;
+          }
+          _menuItems = items;
+          _subCategoryCounts = counts;
+          _isLoading = false;
+        });
       }
-    });
-    _loadMenuItems();
+    } catch (e) {
+      debugPrint('Error in _selectSubCategory: $e');
+      if (mounted) {
+        setState(() {
+          if (_activeType == CategoryType.food) {
+            _selectedFoodSubCategory = sub;
+          } else {
+            _selectedDrinkSubCategory = sub;
+          }
+        });
+        _loadMenuItems();
+      }
+    }
   }
 
   // ==================== DIALOG TRIGGERS ====================
@@ -1129,108 +1152,98 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final isViewingInsideCategory = isCategoryViewMode && _currentSelectedSubCategory != null && !isSearching;
     final isViewingCategoryList = isCategoryViewMode && _currentSelectedSubCategory == null && !isSearching;
 
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundLight,
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          // Category Pills Horizontal Bar (Shown only in Tab Mode)
-          if (_subCategoryViewMode == SubCategoryViewMode.tab && !isSearching)
-            _buildSubCategoryBar(),
+    return PopScope(
+      canPop: !isViewingInsideCategory && !_isSearchOpen,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isSearchOpen) {
+          setState(() {
+            _isSearchOpen = false;
+            _searchController.clear();
+          });
+          _loadMenuItems();
+          return;
+        }
+        if (isViewingInsideCategory) {
+          _selectSubCategory(null);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        appBar: _buildAppBar(),
+        body: Column(
+          children: [
+            // Category Pills Horizontal Bar (Shown only in Tab Mode)
+            if (_subCategoryViewMode == SubCategoryViewMode.tab && !isSearching)
+              _buildSubCategoryBar(),
 
-          // Category Breadcrumb (Shown only in Category Mode when inside a category)
-          AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            child: isViewingInsideCategory
-                ? _buildCategoryBreadcrumb()
-                : const SizedBox.shrink(),
-          ),
+            // Category Breadcrumb (Shown only in Category Mode when inside a category)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              child: isViewingInsideCategory
+                  ? _buildCategoryBreadcrumb()
+                  : const SizedBox.shrink(),
+            ),
 
-          // Search Bar (if opened)
-          if (_isSearchOpen) _buildSearchBar(),
+            // Search Bar (if opened)
+            if (_isSearchOpen) _buildSearchBar(),
 
-          // Status Bar (View Mode Toggle & Layout Mode Switcher)
-          _buildStatusBar(isViewingCategoryList: isViewingCategoryList),
+            // Status Bar (View Mode Toggle & Layout Mode Switcher)
+            _buildStatusBar(isViewingCategoryList: isViewingCategoryList),
 
-          // Main Catalog Grid / List with Folder Zoom-in "Diving In" Transition
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 320),
-              reverseDuration: const Duration(milliseconds: 260),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              layoutBuilder: (currentChild, previousChildren) {
-                return Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    ...previousChildren,
-                    ?currentChild,
-                  ],
-                );
-              },
-              transitionBuilder: (Widget child, Animation<double> animation) {
-                final isEntering = _navigatingIntoCategory;
-                final scaleBegin = isEntering ? 0.76 : 1.22;
-                final scaleEnd = isEntering ? 1.22 : 0.76;
-
-                final Animation<double> scaleAnimation = animation.status == AnimationStatus.reverse
-                    ? Tween<double>(begin: scaleEnd, end: 1.0).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeInCubic,
-                        ),
-                      )
-                    : Tween<double>(begin: scaleBegin, end: 1.0).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      );
-
-                final Animation<double> fadeAnimation = CurvedAnimation(
-                  parent: animation,
-                  curve: const Interval(0.0, 0.75, curve: Curves.easeOut),
-                );
-
-                return FadeTransition(
-                  opacity: fadeAnimation,
-                  child: ScaleTransition(
-                    scale: scaleAnimation,
-                    alignment: Alignment.center,
-                    child: child,
-                  ),
-                );
-              },
-              child: RefreshIndicator(
-                key: ValueKey(
-                  isViewingCategoryList
-                      ? 'category_grid_${_activeType.name}_${_layoutMode.name}'
-                      : 'menu_grid_${_currentSelectedSubCategory?.id}_${_activeType.name}_${_layoutMode.name}_$isSearching',
-                ),
-                color: AppTheme.primaryPink,
-                backgroundColor: Colors.white,
-                onRefresh: () async {
-                  await _loadSubCategories();
-                  await _loadMenuItems();
+            // Main Catalog Grid / List with Clean Fade In / Fade Out Transition
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                reverseDuration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      ...previousChildren,
+                      ?currentChild,
+                    ],
+                  );
                 },
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(color: AppTheme.primaryPink),
-                      )
-                    : isViewingCategoryList
-                        ? (_currentSubCategories.isEmpty
-                            ? _buildEmptyCategoryState()
-                            : _buildCategoryGrid(horizontalPad))
-                        : (_menuItems.isEmpty
-                            ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
-                            : _buildMenuGrid(horizontalPad)),
+                transitionBuilder: (Widget child, Animation<double> animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  );
+                },
+                child: RefreshIndicator(
+                  key: ValueKey(
+                    isViewingCategoryList
+                        ? 'category_grid_${_activeType.name}_${_layoutMode.name}'
+                        : 'menu_grid_${_currentSelectedSubCategory?.id}_${_activeType.name}_${_layoutMode.name}_$isSearching',
+                  ),
+                  color: AppTheme.primaryPink,
+                  backgroundColor: Colors.white,
+                  onRefresh: () async {
+                    await _loadSubCategories();
+                    await _loadMenuItems();
+                  },
+                  child: _isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(color: AppTheme.primaryPink),
+                        )
+                      : isViewingCategoryList
+                          ? (_currentSubCategories.isEmpty
+                              ? _buildEmptyCategoryState()
+                              : _buildCategoryGrid(horizontalPad))
+                          : (_menuItems.isEmpty
+                              ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
+                              : _buildMenuGrid(horizontalPad)),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+        floatingActionButton: _buildFloatingActionButton(isViewingCategoryList: isViewingCategoryList),
       ),
-      floatingActionButton: _buildFloatingActionButton(isViewingCategoryList: isViewingCategoryList),
     );
   }
 

@@ -143,8 +143,18 @@ class _ImageCropperDialogState extends State<ImageCropperDialog> {
           Navigator.of(context).pop(base64String);
         }
       } else {
-        final tempDir = await getTemporaryDirectory();
-        final filePath = '${tempDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png';
+        io.Directory targetDir;
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final imagesDir = io.Directory('${appDir.path}/catalog_images');
+          if (!imagesDir.existsSync()) {
+            await imagesDir.create(recursive: true);
+          }
+          targetDir = imagesDir;
+        } catch (_) {
+          targetDir = await getTemporaryDirectory();
+        }
+        final filePath = '${targetDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png';
         final file = io.File(filePath);
         await file.writeAsBytes(pngBytes, flush: true);
         if (mounted) {

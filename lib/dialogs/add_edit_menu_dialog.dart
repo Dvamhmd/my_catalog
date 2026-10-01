@@ -526,9 +526,14 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
-                        decoration: const InputDecoration(
-                          hintText: 'Misal: Nasi Goreng Spesial',
-                          prefixIcon: Icon(Icons.restaurant_menu_rounded, color: AppTheme.primaryPinkLight),
+                        decoration: InputDecoration(
+                          hintText: 'masukkan nama menu',
+                          prefixIcon: Icon(
+                            widget.activeType == CategoryType.drink
+                                ? Icons.local_drink_rounded
+                                : Icons.restaurant_menu_rounded,
+                            color: AppTheme.primaryPinkLight,
+                          ),
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {

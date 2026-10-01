@@ -31,42 +31,67 @@ class CustomImageView extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = borderRadius ?? BorderRadius.circular(12);
 
+    final cleanPath = imagePath?.trim();
+    final int? targetCacheWidth = (width != null && width!.isFinite && width! > 0) ? (width! * 2).toInt() : null;
+    final int? targetCacheHeight = (height != null && height!.isFinite && height! > 0) ? (height! * 2).toInt() : null;
+
     Widget imageContent;
 
-    if (imagePath != null && imagePath!.isNotEmpty) {
-      if (imagePath!.startsWith('data:image') || (imagePath!.length > 100 && !imagePath!.contains('/') && !imagePath!.contains('\\'))) {
+    if (cleanPath != null && cleanPath.isNotEmpty) {
+      if (cleanPath.startsWith('data:image') ||
+          (cleanPath.length > 100 && !cleanPath.contains('/') && !cleanPath.contains('\\'))) {
         try {
-          final base64Str = imagePath!.contains(',') ? imagePath!.split(',').last : imagePath!;
+          final base64Str = cleanPath.contains(',') ? cleanPath.split(',').last : cleanPath;
           final bytes = base64Decode(base64Str);
           imageContent = Image.memory(
             bytes,
             width: width,
             height: height,
             fit: fit,
+            cacheWidth: targetCacheWidth,
+            cacheHeight: targetCacheHeight,
             errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
           );
         } catch (_) {
           imageContent = _buildPlaceholder();
         }
-      } else if (kIsWeb || imagePath!.startsWith('blob:') || imagePath!.startsWith('http://') || imagePath!.startsWith('https://')) {
+      } else if (kIsWeb || cleanPath.startsWith('blob:') || cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
         imageContent = Image.network(
-          imagePath!,
+          cleanPath,
           width: width,
           height: height,
           fit: fit,
+          cacheWidth: targetCacheWidth,
+          cacheHeight: targetCacheHeight,
           errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
         );
       } else {
         try {
-          final file = io.File(imagePath!);
+          final file = io.File(cleanPath);
           imageContent = Image.file(
             file,
             width: width,
             height: height,
             fit: fit,
-            cacheWidth: width != null ? (width! * 2).toInt() : null,
-            cacheHeight: height != null ? (height! * 2).toInt() : null,
-            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+            cacheWidth: targetCacheWidth,
+            cacheHeight: targetCacheHeight,
+            errorBuilder: (context, error, stackTrace) {
+              try {
+                final base64Str = cleanPath.contains(',') ? cleanPath.split(',').last : cleanPath;
+                final bytes = base64Decode(base64Str);
+                return Image.memory(
+                  bytes,
+                  width: width,
+                  height: height,
+                  fit: fit,
+                  cacheWidth: targetCacheWidth,
+                  cacheHeight: targetCacheHeight,
+                  errorBuilder: (c, e, s) => _buildPlaceholder(),
+                );
+              } catch (_) {
+                return _buildPlaceholder();
+              }
+            },
           );
         } catch (_) {
           imageContent = _buildPlaceholder();
