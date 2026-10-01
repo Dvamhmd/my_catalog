@@ -2,7 +2,6 @@ import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/category_type.dart';
-import '../theme/app_theme.dart';
 
 class CustomImageView extends StatelessWidget {
   final String? imagePath;
@@ -68,54 +67,24 @@ class CustomImageView extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() {
+    final isFood = type == CategoryType.food;
+    final iconData = isFood ? Icons.restaurant_rounded : Icons.local_drink_rounded;
+
+    // Menghitung ukuran icon yang proporsional dengan dimensi gambar
+    final minDim = (width != null && height != null)
+        ? (width! < height! ? width! : height!)
+        : (height ?? width ?? 80.0);
+    final iconSize = (minDim * 0.38).clamp(20.0, 48.0);
+
     return Container(
       width: width,
       height: height,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Color(0xFFFFF0F3),
-            Color(0xFFFFD6E0),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
+      color: const Color(0xFFF3F4F6),
       child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: Color(0xE6FFFFFF),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x1FFF5D8F),
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Text(
-                type.emoji,
-                style: const TextStyle(fontSize: 20),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              type.displayName,
-              style: const TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 9.5,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryPinkDark,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ],
+        child: Icon(
+          iconData,
+          size: iconSize,
+          color: const Color(0xFF9CA3AF),
         ),
       ),
     );
