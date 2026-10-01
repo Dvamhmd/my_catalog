@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../dialogs/add_edit_menu_dialog.dart';
+import '../dialogs/image_cropper_dialog.dart';
 import '../dialogs/manage_sub_category_dialog.dart';
 import '../dialogs/menu_detail_dialog.dart';
 import '../models/category_type.dart';
@@ -203,12 +204,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     try {
       final XFile? file = await _imagePicker.pickImage(
         source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 90,
       );
-      if (file != null) {
-        onPicked(file.path);
+      if (file != null && mounted) {
+        final cropped = await ImageCropperDialog.cropImage(
+          context,
+          file: file,
+          title: 'Sesuaikan Foto Kategori',
+        );
+        if (cropped != null) {
+          onPicked(cropped);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -610,106 +618,108 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 fontSize: 16,
               ),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    _showImageSourceSheet(
-                      hasPhoto: hasImg,
-                      onPicked: (path) {
-                        setDialogState(() {
-                          currentImagePath = path;
-                          clearImage = false;
-                        });
-                      },
-                      onRemove: () {
-                        setDialogState(() {
-                          currentImagePath = null;
-                          clearImage = true;
-                        });
-                      },
-                    );
-                  },
-                  child: Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: AppTheme.softPinkBackground,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFFFD1DC), width: 1.5),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: CustomImageView(
-                            imagePath: hasImg ? currentImagePath : null,
-                            type: subCategory.type,
-                            isCategory: true,
-                            width: 80,
-                            height: 80,
-                            fit: BoxFit.cover,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      _showImageSourceSheet(
+                        hasPhoto: hasImg,
+                        onPicked: (path) {
+                          setDialogState(() {
+                            currentImagePath = path;
+                            clearImage = false;
+                          });
+                        },
+                        onRemove: () {
+                          setDialogState(() {
+                            currentImagePath = null;
+                            clearImage = true;
+                          });
+                        },
+                      );
+                    },
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: AppTheme.softPinkBackground,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFFFD1DC), width: 1.5),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: CustomImageView(
+                              imagePath: hasImg ? currentImagePath : null,
+                              type: subCategory.type,
+                              isCategory: true,
+                              width: 80,
+                              height: 80,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.primaryPink,
-                          shape: BoxShape.circle,
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primaryPink,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 13,
+                            color: Colors.white,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.camera_alt_rounded,
-                          size: 13,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextButton.icon(
-                  onPressed: () {
-                    _showImageSourceSheet(
-                      hasPhoto: hasImg,
-                      onPicked: (path) {
-                        setDialogState(() {
-                          currentImagePath = path;
-                          clearImage = false;
-                        });
-                      },
-                      onRemove: () {
-                        setDialogState(() {
-                          currentImagePath = null;
-                          clearImage = true;
-                        });
-                      },
-                    );
-                  },
-                  icon: const Icon(Icons.photo_camera_outlined, size: 16, color: AppTheme.primaryPink),
-                  label: Text(
-                    hasImg ? 'Ganti Foto' : 'Pilih Foto',
-                    style: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryPink,
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: nameController,
-                  textCapitalization: TextCapitalization.words,
-                  style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
-                  decoration: InputDecoration(
-                    labelText: 'Nama Kategori',
-                    prefixIcon: Icon(subCategory.type.icon, color: AppTheme.primaryPinkLight),
+                  const SizedBox(height: 6),
+                  TextButton.icon(
+                    onPressed: () {
+                      _showImageSourceSheet(
+                        hasPhoto: hasImg,
+                        onPicked: (path) {
+                          setDialogState(() {
+                            currentImagePath = path;
+                            clearImage = false;
+                          });
+                        },
+                        onRemove: () {
+                          setDialogState(() {
+                            currentImagePath = null;
+                            clearImage = true;
+                          });
+                        },
+                      );
+                    },
+                    icon: const Icon(Icons.photo_camera_outlined, size: 16, color: AppTheme.primaryPink),
+                    label: Text(
+                      hasImg ? 'Ganti Foto' : 'Pilih Foto',
+                      style: const TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryPink,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nameController,
+                    textCapitalization: TextCapitalization.words,
+                    style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Nama Kategori',
+                      prefixIcon: Icon(subCategory.type.icon, color: AppTheme.primaryPinkLight),
+                    ),
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -834,107 +844,109 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
               ],
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    _showImageSourceSheet(
-                      hasPhoto: categoryImagePath != null,
-                      onPicked: (path) {
-                        setDialogState(() {
-                          categoryImagePath = path;
-                        });
-                      },
-                      onRemove: () {
-                        setDialogState(() {
-                          categoryImagePath = null;
-                        });
-                      },
-                    );
-                  },
-                  child: Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      Container(
-                        width: 76,
-                        height: 76,
-                        decoration: BoxDecoration(
-                          color: AppTheme.softPinkBackground,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: categoryImagePath != null ? AppTheme.primaryPink : const Color(0xFFFFD1DC),
-                            width: 1.5,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      _showImageSourceSheet(
+                        hasPhoto: categoryImagePath != null,
+                        onPicked: (path) {
+                          setDialogState(() {
+                            categoryImagePath = path;
+                          });
+                        },
+                        onRemove: () {
+                          setDialogState(() {
+                            categoryImagePath = null;
+                          });
+                        },
+                      );
+                    },
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: AppTheme.softPinkBackground,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: categoryImagePath != null ? AppTheme.primaryPink : const Color(0xFFFFD1DC),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: CustomImageView(
+                              imagePath: categoryImagePath,
+                              type: _activeType,
+                              isCategory: true,
+                              width: 76,
+                              height: 76,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: CustomImageView(
-                            imagePath: categoryImagePath,
-                            type: _activeType,
-                            isCategory: true,
-                            width: 76,
-                            height: 76,
-                            fit: BoxFit.cover,
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primaryPink,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 13,
+                            color: Colors.white,
                           ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.primaryPink,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.camera_alt_rounded,
-                          size: 13,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextButton.icon(
-                  onPressed: () {
-                    _showImageSourceSheet(
-                      hasPhoto: categoryImagePath != null,
-                      onPicked: (path) {
-                        setDialogState(() {
-                          categoryImagePath = path;
-                        });
-                      },
-                      onRemove: () {
-                        setDialogState(() {
-                          categoryImagePath = null;
-                        });
-                      },
-                    );
-                  },
-                  icon: const Icon(Icons.photo_camera_outlined, size: 16, color: AppTheme.primaryPink),
-                  label: Text(
-                    categoryImagePath != null ? 'Ganti Foto' : 'Pilih Foto (Opsional)',
-                    style: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryPink,
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                  style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
-                  decoration: InputDecoration(
-                    labelText: 'Nama Kategori',
-                    hintText: isFood ? 'Contoh: Makanan Utama, Snack...' : 'Contoh: Kopi, Jus Segar...',
-                    prefixIcon: Icon(categoryIcon, color: AppTheme.primaryPinkLight),
+                  const SizedBox(height: 6),
+                  TextButton.icon(
+                    onPressed: () {
+                      _showImageSourceSheet(
+                        hasPhoto: categoryImagePath != null,
+                        onPicked: (path) {
+                          setDialogState(() {
+                            categoryImagePath = path;
+                          });
+                        },
+                        onRemove: () {
+                          setDialogState(() {
+                            categoryImagePath = null;
+                          });
+                        },
+                      );
+                    },
+                    icon: const Icon(Icons.photo_camera_outlined, size: 16, color: AppTheme.primaryPink),
+                    label: Text(
+                      categoryImagePath != null ? 'Ganti Foto' : 'Pilih Foto (Opsional)',
+                      style: const TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryPink,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    style: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Nama Kategori',
+                      hintText: isFood ? 'Contoh: Makanan Utama, Snack...' : 'Contoh: Kopi, Jus Segar...',
+                      prefixIcon: Icon(categoryIcon, color: AppTheme.primaryPinkLight),
+                    ),
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'image_cropper_dialog.dart';
 import '../models/category_type.dart';
 import '../models/sub_category_model.dart';
 import '../theme/app_theme.dart';
@@ -41,12 +42,19 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
     try {
       final XFile? file = await _picker.pickImage(
         source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 90,
       );
-      if (file != null) {
-        onPicked(file.path);
+      if (file != null && mounted) {
+        final cropped = await ImageCropperDialog.cropImage(
+          context,
+          file: file,
+          title: 'Sesuaikan Foto Kategori',
+        );
+        if (cropped != null) {
+          onPicked(cropped);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -207,9 +215,10 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
                   fontSize: 16,
                 ),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   // Photo Preview & Picker
                   GestureDetector(
                     onTap: () {
@@ -310,7 +319,8 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
                   ),
                 ],
               ),
-              actions: [
+            ),
+            actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
                   child: const Text('Batal', style: TextStyle(color: AppTheme.textMedium)),
@@ -381,17 +391,21 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
     final isFood = widget.activeType == CategoryType.food;
     final categoryIcon = widget.activeType.icon;
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-      ),
-      decoration: const BoxDecoration(
-        color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: (MediaQuery.sizeOf(context).height - bottomInset).clamp(280.0, MediaQuery.sizeOf(context).height * 0.85),
+        ),
+        decoration: const BoxDecoration(
+          color: AppTheme.surfaceWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // Drag Handle & Header
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
@@ -649,11 +663,11 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
                   )
                 : ListView.separated(
                     shrinkWrap: true,
-                    padding: EdgeInsets.only(
+                    padding: const EdgeInsets.only(
                       left: 16,
                       right: 16,
                       top: 6,
-                      bottom: bottomInset + 16,
+                      bottom: 16,
                     ),
                     itemCount: widget.subCategories.length,
                     separatorBuilder: (context, index) => const SizedBox(height: 8),
@@ -785,7 +799,8 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 

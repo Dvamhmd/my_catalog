@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +34,21 @@ class CustomImageView extends StatelessWidget {
     Widget imageContent;
 
     if (imagePath != null && imagePath!.isNotEmpty) {
-      if (kIsWeb) {
+      if (imagePath!.startsWith('data:image') || (imagePath!.length > 100 && !imagePath!.contains('/') && !imagePath!.contains('\\'))) {
+        try {
+          final base64Str = imagePath!.contains(',') ? imagePath!.split(',').last : imagePath!;
+          final bytes = base64Decode(base64Str);
+          imageContent = Image.memory(
+            bytes,
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+          );
+        } catch (_) {
+          imageContent = _buildPlaceholder();
+        }
+      } else if (kIsWeb || imagePath!.startsWith('blob:') || imagePath!.startsWith('http://') || imagePath!.startsWith('https://')) {
         imageContent = Image.network(
           imagePath!,
           width: width,

@@ -20,6 +20,7 @@ class DatabaseService {
 
   static const String _prefSubCatsKey = 'my_catalog_sub_categories_json';
   static const String _prefMenuItemsKey = 'my_catalog_menu_items_json';
+  static const String _prefCleanResetKey = 'my_catalog_clean_reset_v2';
 
   DatabaseService._init();
 
@@ -32,6 +33,7 @@ class DatabaseService {
     } else {
       try {
         _database = await _initDB('my_catalog.db');
+        await _checkAndPerformCleanReset();
         await _loadToCacheFromSqlite();
       } catch (e) {
         debugPrint('SQLite initialization error, falling back to JSON storage: $e');
@@ -55,12 +57,19 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           try {
             await db.execute('ALTER TABLE sub_categories ADD COLUMN image_path TEXT;');
+          } catch (_) {}
+        }
+        if (oldVersion < 3) {
+          // Bersihkan seluruh data dummy default lama
+          try {
+            await db.delete('menu_items');
+            await db.delete('sub_categories');
           } catch (_) {}
         }
       },
@@ -105,139 +114,25 @@ class DatabaseService {
       CREATE INDEX idx_menu_items_sub_category ON menu_items(sub_category_id);
     ''');
 
-    await _seedInitialData(db);
+    // Data dimulai dari awal benar-benar kosong (tanpa dummy)
   }
 
-  Future<void> _seedInitialData(Database db) async {
-    final now = DateTime.now().toIso8601String();
-
-    final foodCat1Id = await db.insert('sub_categories', {
-      'name': 'Makanan Utama',
-      'type': CategoryType.food.name,
-      'created_at': now,
-    });
-    final foodCat2Id = await db.insert('sub_categories', {
-      'name': 'Cemilan & Snack',
-      'type': CategoryType.food.name,
-      'created_at': now,
-    });
-    final foodCat3Id = await db.insert('sub_categories', {
-      'name': 'Dessert & Manis',
-      'type': CategoryType.food.name,
-      'created_at': now,
-    });
-
-    final drinkCat1Id = await db.insert('sub_categories', {
-      'name': 'Kopi Signature',
-      'type': CategoryType.drink.name,
-      'created_at': now,
-    });
-    final drinkCat2Id = await db.insert('sub_categories', {
-      'name': 'Jus & Smoothies',
-      'type': CategoryType.drink.name,
-      'created_at': now,
-    });
-    final drinkCat3Id = await db.insert('sub_categories', {
-      'name': 'Teh & Mocktail',
-      'type': CategoryType.drink.name,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Nasi Goreng Spesial',
-      'price': 28000.0,
-      'image_path': null,
-      'sub_category_id': foodCat1Id,
-      'sub_category_name': 'Makanan Utama',
-      'type': CategoryType.food.name,
-      'description': 'Nasi goreng bumbu racikan dengan telur mata sapi, ayam suwir, dan kerupuk renyah.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Ayam Crispy Sambal Matah',
-      'price': 32000.0,
-      'image_path': null,
-      'sub_category_id': foodCat1Id,
-      'sub_category_name': 'Makanan Utama',
-      'type': CategoryType.food.name,
-      'description': 'Ayam goreng renyah dengan taburan sambal matah khas Bali yang segar dan gurih.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Kentang Goreng Truffle',
-      'price': 22000.0,
-      'image_path': null,
-      'sub_category_id': foodCat2Id,
-      'sub_category_name': 'Cemilan & Snack',
-      'type': CategoryType.food.name,
-      'description': 'French fries renyah dengan aroma minyak truffle dan taburan parmesan.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Croissant Butter Soft',
-      'price': 20000.0,
-      'image_path': null,
-      'sub_category_id': foodCat3Id,
-      'sub_category_name': 'Dessert & Manis',
-      'type': CategoryType.food.name,
-      'description': 'Pastry renyah berlapis dengan butter premium aroma wangi.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Caramel Macchiato Ice',
-      'price': 26000.0,
-      'image_path': null,
-      'sub_category_id': drinkCat1Id,
-      'sub_category_name': 'Kopi Signature',
-      'type': CategoryType.drink.name,
-      'description': 'Espresso premium dengan susu lembut dan saus karamel legit.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Matcha Latte Creamy',
-      'price': 24000.0,
-      'image_path': null,
-      'sub_category_id': drinkCat1Id,
-      'sub_category_name': 'Kopi Signature',
-      'type': CategoryType.drink.name,
-      'description': 'Matcha Jepang autentik dipadukan dengan fresh milk lembut.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Mango Smoothie Blast',
-      'price': 25000.0,
-      'image_path': null,
-      'sub_category_id': drinkCat2Id,
-      'sub_category_name': 'Jus & Smoothies',
-      'type': CategoryType.drink.name,
-      'description': 'Jus mangga arumanis segar dengan potongan buah mangga asli di atasnya.',
-      'is_available': 1,
-      'created_at': now,
-    });
-
-    await db.insert('menu_items', {
-      'name': 'Lychee Rose Tea Ice',
-      'price': 20000.0,
-      'image_path': null,
-      'sub_category_id': drinkCat3Id,
-      'sub_category_name': 'Teh & Mocktail',
-      'type': CategoryType.drink.name,
-      'description': 'Teh wangi dengan sentuhan sirup mawar dan buah leci segar utuh.',
-      'is_available': 1,
-      'created_at': now,
-    });
+  Future<void> _checkAndPerformCleanReset() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasReset = prefs.getBool(_prefCleanResetKey) ?? false;
+      if (!hasReset) {
+        if (_database != null) {
+          await _database!.delete('menu_items');
+          await _database!.delete('sub_categories');
+        }
+        await prefs.remove(_prefSubCatsKey);
+        await prefs.remove(_prefMenuItemsKey);
+        await prefs.setBool(_prefCleanResetKey, true);
+      }
+    } catch (e) {
+      debugPrint('Error performing clean reset: $e');
+    }
   }
 
   Future<void> _loadToCacheFromSqlite() async {
@@ -260,6 +155,17 @@ class DatabaseService {
   Future<void> _initFallbackStorage() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final hasReset = prefs.getBool(_prefCleanResetKey) ?? false;
+
+      if (!hasReset) {
+        // Hapus data dummy bawaan sebelumnya agar bersih dari 0
+        _cachedSubCategories.clear();
+        _cachedMenuItems.clear();
+        await _saveFallbackToPrefs();
+        await prefs.setBool(_prefCleanResetKey, true);
+        return;
+      }
+
       final subJson = prefs.getString(_prefSubCatsKey);
       final menuJson = prefs.getString(_prefMenuItemsKey);
 
@@ -277,121 +183,15 @@ class DatabaseService {
           menuList.map((m) => MenuItemModel.fromMap(Map<String, dynamic>.from(m))),
         );
       } else {
-        _seedFallbackData();
+        _cachedSubCategories.clear();
+        _cachedMenuItems.clear();
         await _saveFallbackToPrefs();
       }
     } catch (e) {
       debugPrint('Error initializing fallback storage: $e');
-      if (_cachedSubCategories.isEmpty) {
-        _seedFallbackData();
-      }
+      _cachedSubCategories.clear();
+      _cachedMenuItems.clear();
     }
-  }
-
-  void _seedFallbackData() {
-    final now = DateTime.now();
-    _cachedSubCategories.clear();
-    _cachedMenuItems.clear();
-
-    _cachedSubCategories.addAll([
-      SubCategoryModel(id: 1, name: 'Makanan Utama', type: CategoryType.food, createdAt: now),
-      SubCategoryModel(id: 2, name: 'Cemilan & Snack', type: CategoryType.food, createdAt: now),
-      SubCategoryModel(id: 3, name: 'Dessert & Manis', type: CategoryType.food, createdAt: now),
-      SubCategoryModel(id: 4, name: 'Kopi Signature', type: CategoryType.drink, createdAt: now),
-      SubCategoryModel(id: 5, name: 'Jus & Smoothies', type: CategoryType.drink, createdAt: now),
-      SubCategoryModel(id: 6, name: 'Teh & Mocktail', type: CategoryType.drink, createdAt: now),
-    ]);
-
-    _cachedMenuItems.addAll([
-      MenuItemModel(
-        id: 1,
-        name: 'Nasi Goreng Spesial',
-        price: 28000.0,
-        subCategoryId: 1,
-        subCategoryName: 'Makanan Utama',
-        type: CategoryType.food,
-        description: 'Nasi goreng bumbu racikan dengan telur mata sapi, ayam suwir, dan kerupuk renyah.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 2,
-        name: 'Ayam Crispy Sambal Matah',
-        price: 32000.0,
-        subCategoryId: 1,
-        subCategoryName: 'Makanan Utama',
-        type: CategoryType.food,
-        description: 'Ayam goreng renyah dengan taburan sambal matah khas Bali yang segar dan gurih.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 3,
-        name: 'Kentang Goreng Truffle',
-        price: 22000.0,
-        subCategoryId: 2,
-        subCategoryName: 'Cemilan & Snack',
-        type: CategoryType.food,
-        description: 'French fries renyah dengan aroma minyak truffle dan taburan parmesan.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 4,
-        name: 'Croissant Butter Soft',
-        price: 20000.0,
-        subCategoryId: 3,
-        subCategoryName: 'Dessert & Manis',
-        type: CategoryType.food,
-        description: 'Pastry renyah berlapis dengan butter premium aroma wangi.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 5,
-        name: 'Caramel Macchiato Ice',
-        price: 26000.0,
-        subCategoryId: 4,
-        subCategoryName: 'Kopi Signature',
-        type: CategoryType.drink,
-        description: 'Espresso premium dengan susu lembut dan saus karamel legit.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 6,
-        name: 'Matcha Latte Creamy',
-        price: 24000.0,
-        subCategoryId: 4,
-        subCategoryName: 'Kopi Signature',
-        type: CategoryType.drink,
-        description: 'Matcha Jepang autentik dipadukan dengan fresh milk lembut.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 7,
-        name: 'Mango Smoothie Blast',
-        price: 25000.0,
-        subCategoryId: 5,
-        subCategoryName: 'Jus & Smoothies',
-        type: CategoryType.drink,
-        description: 'Jus mangga arumanis segar dengan potongan buah mangga asli di atasnya.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-      MenuItemModel(
-        id: 8,
-        name: 'Lychee Rose Tea Ice',
-        price: 20000.0,
-        subCategoryId: 6,
-        subCategoryName: 'Teh & Mocktail',
-        type: CategoryType.drink,
-        description: 'Teh wangi dengan sentuhan sirup mawar dan buah leci segar utuh.',
-        isAvailable: true,
-        createdAt: now,
-      ),
-    ]);
   }
 
   Future<void> _saveFallbackToPrefs() async {
@@ -552,7 +352,6 @@ class DatabaseService {
     }
     return counts;
   }
-
 
   Future<int> insertMenuItem(MenuItemModel item) async {
     if (!_isInitialized) await initialize();
