@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   List<MenuItemModel> _menuItems = const [];
   bool _isLoading = true;
+  bool _navigatingIntoCategory = true;
 
   bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
@@ -187,6 +188,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _selectSubCategory(SubCategoryModel? sub) {
     setState(() {
+      _navigatingIntoCategory = sub != null;
       if (_activeType == CategoryType.food) {
         _selectedFoodSubCategory = sub;
       } else {
@@ -1137,8 +1139,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             _buildSubCategoryBar(),
 
           // Category Breadcrumb (Shown only in Category Mode when inside a category)
-          if (isViewingInsideCategory)
-            _buildCategoryBreadcrumb(),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            child: isViewingInsideCategory
+                ? _buildCategoryBreadcrumb()
+                : const SizedBox.shrink(),
+          ),
 
           // Search Bar (if opened)
           if (_isSearchOpen) _buildSearchBar(),
@@ -1146,26 +1153,79 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           // Status Bar (View Mode Toggle & Layout Mode Switcher)
           _buildStatusBar(isViewingCategoryList: isViewingCategoryList),
 
-          // Main Catalog Grid / List
+          // Main Catalog Grid / List with Folder Zoom-in "Diving In" Transition
           Expanded(
-            child: RefreshIndicator(
-              color: AppTheme.primaryPink,
-              backgroundColor: Colors.white,
-              onRefresh: () async {
-                await _loadSubCategories();
-                await _loadMenuItems();
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              reverseDuration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              layoutBuilder: (currentChild, previousChildren) {
+                return Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    ...previousChildren,
+                    ?currentChild,
+                  ],
+                );
               },
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppTheme.primaryPink),
-                    )
-                  : isViewingCategoryList
-                      ? (_currentSubCategories.isEmpty
-                          ? _buildEmptyCategoryState()
-                          : _buildCategoryGrid(horizontalPad))
-                      : (_menuItems.isEmpty
-                          ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
-                          : _buildMenuGrid(horizontalPad)),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                final isEntering = _navigatingIntoCategory;
+                final scaleBegin = isEntering ? 0.76 : 1.22;
+                final scaleEnd = isEntering ? 1.22 : 0.76;
+
+                final Animation<double> scaleAnimation = animation.status == AnimationStatus.reverse
+                    ? Tween<double>(begin: scaleEnd, end: 1.0).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeInCubic,
+                        ),
+                      )
+                    : Tween<double>(begin: scaleBegin, end: 1.0).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        ),
+                      );
+
+                final Animation<double> fadeAnimation = CurvedAnimation(
+                  parent: animation,
+                  curve: const Interval(0.0, 0.75, curve: Curves.easeOut),
+                );
+
+                return FadeTransition(
+                  opacity: fadeAnimation,
+                  child: ScaleTransition(
+                    scale: scaleAnimation,
+                    alignment: Alignment.center,
+                    child: child,
+                  ),
+                );
+              },
+              child: RefreshIndicator(
+                key: ValueKey(
+                  isViewingCategoryList
+                      ? 'category_grid_${_activeType.name}_${_layoutMode.name}'
+                      : 'menu_grid_${_currentSelectedSubCategory?.id}_${_activeType.name}_${_layoutMode.name}_$isSearching',
+                ),
+                color: AppTheme.primaryPink,
+                backgroundColor: Colors.white,
+                onRefresh: () async {
+                  await _loadSubCategories();
+                  await _loadMenuItems();
+                },
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: AppTheme.primaryPink),
+                      )
+                    : isViewingCategoryList
+                        ? (_currentSubCategories.isEmpty
+                            ? _buildEmptyCategoryState()
+                            : _buildCategoryGrid(horizontalPad))
+                        : (_menuItems.isEmpty
+                            ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
+                            : _buildMenuGrid(horizontalPad)),
+              ),
             ),
           ),
         ],
