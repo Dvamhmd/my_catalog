@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -28,7 +28,7 @@ class MyCatalogApp extends StatelessWidget {
       title: 'My Catalog',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const HomeScreen(),
+      home: const SplashScreen(),
       builder: (context, child) {
         // Safe scalable text clamps to guarantee no overflow on high DPI/accessibility zoom
         final mediaQuery = MediaQuery.of(context);
