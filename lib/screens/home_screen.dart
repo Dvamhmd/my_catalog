@@ -1658,7 +1658,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           bottom: 90,
         ),
         itemCount: subCategories.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
+        separatorBuilder: (context, index) => const SizedBox(height: 6),
         itemBuilder: (context, index) {
           final sub = subCategories[index];
           final count = _subCategoryCounts[sub.id] ?? 0;
