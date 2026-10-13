@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../theme/app_theme.dart';
@@ -135,10 +136,17 @@ class _ImageCropperDialogState extends State<ImageCropperDialog> {
         return;
       }
 
-      final Uint8List pngBytes = byteData.buffer.asUint8List();
+      final Uint8List rawBytes = byteData.buffer.asUint8List();
+      Uint8List outputBytes = rawBytes;
+      try {
+        final decoded = img.decodeImage(rawBytes);
+        if (decoded != null) {
+          outputBytes = Uint8List.fromList(img.encodeWebP(decoded, quality: 80));
+        }
+      } catch (_) {}
 
       if (kIsWeb) {
-        final base64String = 'data:image/png;base64,${base64Encode(pngBytes)}';
+        final base64String = 'data:image/webp;base64,${base64Encode(outputBytes)}';
         if (mounted) {
           Navigator.of(context).pop(base64String);
         }
@@ -154,9 +162,9 @@ class _ImageCropperDialogState extends State<ImageCropperDialog> {
         } catch (_) {
           targetDir = await getTemporaryDirectory();
         }
-        final filePath = '${targetDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png';
+        final filePath = '${targetDir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.webp';
         final file = io.File(filePath);
-        await file.writeAsBytes(pngBytes, flush: true);
+        await file.writeAsBytes(outputBytes, flush: true);
         if (mounted) {
           Navigator.of(context).pop(filePath);
         }

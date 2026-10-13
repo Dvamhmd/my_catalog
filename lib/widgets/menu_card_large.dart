@@ -16,14 +16,16 @@ class MenuCardLarge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isOutOfStock = !item.isAvailable || item.stock <= 0;
+
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surfaceWhite,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: item.isAvailable
-              ? const Color(0xFFFFE0E6)
-              : const Color(0xFFE5E5E5),
+          color: isOutOfStock
+              ? const Color(0xFFE5E5E5)
+              : const Color(0xFFFFE0E6),
           width: 1.2,
         ),
         boxShadow: const [
@@ -54,7 +56,7 @@ class MenuCardLarge extends StatelessWidget {
                       height: 96,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    if (!item.isAvailable)
+                    if (isOutOfStock)
                       Positioned.fill(
                         child: Container(
                           decoration: BoxDecoration(
@@ -84,24 +86,55 @@ class MenuCardLarge extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Subcategory Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: AppTheme.softPinkBackground,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          item.subCategoryName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryPinkDark,
+                      // Subcategory Badge & Stock Badge
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.softPinkBackground,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              item.subCategoryName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primaryPinkDark,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: item.stock > 0
+                                  ? const Color(0xFFE8F5E9)
+                                  : const Color(0xFFFFEBEE),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: item.stock > 0
+                                    ? const Color(0xFFA5D6A7)
+                                    : const Color(0xFFFFCDD2),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              item.stock > 0 ? 'Stok: ${item.stock}' : 'Stok: 0',
+                              style: TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: item.stock > 0
+                                    ? const Color(0xFF2E7D32)
+                                    : AppTheme.dangerRed,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 4),
 
@@ -139,11 +172,13 @@ class MenuCardLarge extends StatelessWidget {
                       // Price
                       Text(
                         Formatters.currency(item.price),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: AppTheme.fontFamily,
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: AppTheme.primaryPink,
+                          color: isOutOfStock
+                              ? AppTheme.primaryPink.withValues(alpha: 0.38)
+                              : AppTheme.primaryPink,
                         ),
                       ),
                     ],

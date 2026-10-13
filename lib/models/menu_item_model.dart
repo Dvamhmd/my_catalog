@@ -8,6 +8,7 @@ class MenuItemModel {
   final int subCategoryId;
   final String subCategoryName;
   final CategoryType type;
+  final int stock;
   final String? description;
   final bool isAvailable;
   final DateTime createdAt;
@@ -20,6 +21,7 @@ class MenuItemModel {
     required this.subCategoryId,
     required this.subCategoryName,
     required this.type,
+    this.stock = 0,
     this.description,
     this.isAvailable = true,
     DateTime? createdAt,
@@ -34,6 +36,7 @@ class MenuItemModel {
       'sub_category_id': subCategoryId,
       'sub_category_name': subCategoryName,
       'type': type.name,
+      'stock': stock,
       'description': description,
       'is_available': isAvailable ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
@@ -49,6 +52,7 @@ class MenuItemModel {
       subCategoryId: map['sub_category_id'] as int,
       subCategoryName: map['sub_category_name'] as String? ?? 'Umum',
       type: CategoryType.fromString(map['type'] as String),
+      stock: (map['stock'] as num?)?.toInt() ?? 0,
       description: map['description'] as String?,
       isAvailable: (map['is_available'] as int? ?? 1) == 1,
       createdAt: map['created_at'] != null
@@ -65,6 +69,7 @@ class MenuItemModel {
     int? subCategoryId,
     String? subCategoryName,
     CategoryType? type,
+    int? stock,
     String? description,
     bool? isAvailable,
     DateTime? createdAt,
@@ -77,6 +82,7 @@ class MenuItemModel {
       subCategoryId: subCategoryId ?? this.subCategoryId,
       subCategoryName: subCategoryName ?? this.subCategoryName,
       type: type ?? this.type,
+      stock: stock ?? this.stock,
       description: description ?? this.description,
       isAvailable: isAvailable ?? this.isAvailable,
       createdAt: createdAt ?? this.createdAt,

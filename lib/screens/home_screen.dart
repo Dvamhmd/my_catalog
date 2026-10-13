@@ -21,6 +21,9 @@ import '../widgets/folder_card_small.dart';
 import '../widgets/menu_card_large.dart';
 import '../widgets/menu_card_medium.dart';
 import '../widgets/menu_card_small.dart';
+import '../widgets/app_drawer.dart';
+import 'kasir_screen.dart';
+import 'transaction_history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    PreferenceService.saveLastActiveMenu(AppDrawerMenu.admin);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChange);
 
@@ -1080,9 +1084,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               await _loadMenuItems();
             }
           },
+          onUpdateStock: (newStock) async {
+            if (item.id != null) {
+              await _db.updateMenuItemStock(item.id!, newStock);
+              await _loadMenuItems();
+              _showFeedback('Stok "${item.name}" diubah menjadi $newStock porsi');
+            }
+          },
         );
       },
-    );
+    ).then((_) async {
+      await _loadMenuItems();
+      await _loadSubCategories();
+    });
   }
 
   void _confirmDeleteMenu(MenuItemModel item) {
@@ -1170,6 +1184,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       },
       child: Scaffold(
         backgroundColor: AppTheme.backgroundLight,
+        drawer: AppDrawer(
+          activeMenu: AppDrawerMenu.admin,
+          onSelectMenu: (menu) {
+            PreferenceService.saveLastActiveMenu(menu);
+            if (menu == AppDrawerMenu.kasir) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const KasirScreen()),
+              );
+            } else if (menu == AppDrawerMenu.riwayatTransaksi) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
+              );
+            }
+          },
+          onDataChanged: () {
+            _loadSubCategories();
+            _loadMenuItems();
+          },
+        ),
         appBar: _buildAppBar(),
         body: Column(
           children: [
@@ -1252,18 +1285,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       title: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.asset(
-              'assets/images/app_logo.png',
+              'assets/images/app_logo.webp',
               width: 28,
               height: 28,
               fit: BoxFit.cover,
             ),
           ),
           const SizedBox(width: 10),
-          const Text('My Catalog'),
+          const Flexible(
+            child: Text(
+              'Menu Admin',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       actions: [

@@ -32,6 +32,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _priceController;
+  late TextEditingController _stockController;
   late TextEditingController _descriptionController;
 
   SubCategoryModel? _selectedSubCategory;
@@ -49,6 +50,9 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
     _nameController = TextEditingController(text: edit?.name ?? '');
     _priceController = TextEditingController(
       text: edit != null ? edit.price.toInt().toString() : '',
+    );
+    _stockController = TextEditingController(
+      text: edit != null ? edit.stock.toString() : '20',
     );
     _descriptionController = TextEditingController(text: edit?.description ?? '');
     _imagePath = edit?.imagePath;
@@ -76,6 +80,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
+    _stockController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -239,6 +244,8 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
       return;
     }
 
+    final stock = int.tryParse(_stockController.text.trim()) ?? 0;
+
     final menuItem = MenuItemModel(
       id: widget.itemToEdit?.id,
       name: _nameController.text.trim(),
@@ -247,10 +254,11 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
       subCategoryId: _selectedSubCategory!.id!,
       subCategoryName: _selectedSubCategory!.name,
       type: widget.activeType,
+      stock: stock,
       description: _descriptionController.text.trim().isEmpty
           ? null
           : _descriptionController.text.trim(),
-      isAvailable: _isAvailable,
+      isAvailable: _isAvailable && stock > 0,
       createdAt: widget.itemToEdit?.createdAt,
     );
 
@@ -358,7 +366,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                             children: [
                               Container(
                                 width: 140,
-                                height: 130,
+                                height: 140,
                                 decoration: BoxDecoration(
                                   color: AppTheme.softPinkBackground,
                                   borderRadius: BorderRadius.circular(18),
@@ -374,7 +382,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                                         type: widget.activeType,
                                         borderRadius: BorderRadius.circular(16),
                                         width: 140,
-                                        height: 130,
+                                        height: 140,
                                       )
                                     : Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
@@ -594,6 +602,107 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                       ),
                       const SizedBox(height: 16),
 
+                      // Stok Menu
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Text(
+                                'Stok Menu',
+                                style: TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textDark,
+                                ),
+                              ),
+                              Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              _buildQuickStockChip(5),
+                              const SizedBox(width: 6),
+                              _buildQuickStockChip(10),
+                              const SizedBox(width: 6),
+                              _buildQuickStockChip(20),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.softPinkBackground,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFFFE0E6)),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.remove_rounded, color: AppTheme.primaryPinkDark, size: 20),
+                              onPressed: () {
+                                final current = int.tryParse(_stockController.text) ?? 0;
+                                if (current > 0) {
+                                  _stockController.text = (current - 1).toString();
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _stockController,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textDark,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: '0',
+                                suffixText: 'porsi',
+                                suffixStyle: TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 12,
+                                  color: AppTheme.textMedium,
+                                ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Stok wajib diisi';
+                                }
+                                final parsed = int.tryParse(value);
+                                if (parsed == null || parsed < 0) {
+                                  return 'Stok harus berupa angka';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.softPinkBackground,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFFFE0E6)),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.add_rounded, color: AppTheme.primaryPinkDark, size: 20),
+                              onPressed: () {
+                                final current = int.tryParse(_stockController.text) ?? 0;
+                                _stockController.text = (current + 1).toString();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
                       // Deskripsi (Opsional)
                       const Text(
                         'Deskripsi / Catatan (Opsional)',
@@ -735,6 +844,33 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickStockChip(int value) {
+    return InkWell(
+      onTap: () {
+        final current = int.tryParse(_stockController.text) ?? 0;
+        _stockController.text = (current + value).toString();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.softPinkBackground,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFFFD1DC)),
+        ),
+        child: Text(
+          '+$value',
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryPinkDark,
+          ),
         ),
       ),
     );

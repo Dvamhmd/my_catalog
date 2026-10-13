@@ -16,14 +16,16 @@ class MenuCardMedium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isOutOfStock = !item.isAvailable || item.stock <= 0;
+
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surfaceWhite,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: item.isAvailable
-              ? const Color(0xFFFFE0E6)
-              : const Color(0xFFE5E5E5),
+          color: isOutOfStock
+              ? const Color(0xFFE5E5E5)
+              : const Color(0xFFFFE0E6),
           width: 1.2,
         ),
         boxShadow: const [
@@ -92,8 +94,31 @@ class MenuCardMedium extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Stock Badge on Top Right
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: item.stock > 0
+                              ? Colors.black.withValues(alpha: 0.6)
+                              : AppTheme.dangerRed,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          item.stock > 0 ? 'Stok: ${item.stock}' : 'Stok: 0',
+                          style: const TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                     // Availability Overlay
-                    if (!item.isAvailable)
+                    if (isOutOfStock)
                       Positioned.fill(
                         child: Container(
                           decoration: BoxDecoration(
@@ -151,11 +176,13 @@ class MenuCardMedium extends StatelessWidget {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           Formatters.currency(item.price),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: AppTheme.fontFamily,
                             fontSize: 15.5,
                             fontWeight: FontWeight.w800,
-                            color: AppTheme.primaryPink,
+                            color: isOutOfStock
+                                ? AppTheme.primaryPink.withValues(alpha: 0.38)
+                                : AppTheme.primaryPink,
                           ),
                         ),
                       ),

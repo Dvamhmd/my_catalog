@@ -2,8 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/preference_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_drawer.dart';
 import 'home_screen.dart';
+import 'kasir_screen.dart';
+import 'transaction_history_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -26,10 +30,12 @@ class _SplashScreenState extends State<SplashScreen>
 
   Timer? _navigationTimer;
   bool _isNavigating = false;
+  AppDrawerMenu _targetMenu = AppDrawerMenu.admin;
 
   @override
   void initState() {
     super.initState();
+    _loadTargetMenu();
 
     // 1. Animasi Masuk (Scale Bounce)
     _entranceController = AnimationController(
@@ -79,6 +85,15 @@ class _SplashScreenState extends State<SplashScreen>
     _startSequence();
   }
 
+  Future<void> _loadTargetMenu() async {
+    final menu = await PreferenceService.getLastActiveMenu();
+    if (mounted) {
+      setState(() {
+        _targetMenu = menu;
+      });
+    }
+  }
+
   void _startSequence() {
     _entranceController.forward().then((_) {
       if (mounted) {
@@ -86,24 +101,39 @@ class _SplashScreenState extends State<SplashScreen>
       }
     });
 
-    // Otomatis berpindah ke HomeScreen setelah 3.5 detik
+    // Otomatis berpindah ke menu terakhir setelah 3.5 detik
     _navigationTimer = Timer(const Duration(milliseconds: 3500), () {
-      _goToHomeScreen();
+      _goToTargetScreen();
     });
   }
 
-  void _goToHomeScreen() {
+  Future<void> _goToTargetScreen() async {
     if (_isNavigating || !mounted) return;
     _isNavigating = true;
     _navigationTimer?.cancel();
 
     HapticFeedback.lightImpact();
 
+    final targetMenu = await PreferenceService.getLastActiveMenu();
+    if (!mounted) return;
+
+    final Widget targetScreen;
+    switch (targetMenu) {
+      case AppDrawerMenu.kasir:
+        targetScreen = const KasirScreen();
+        break;
+      case AppDrawerMenu.riwayatTransaksi:
+        targetScreen = const TransactionHistoryScreen();
+        break;
+      case AppDrawerMenu.admin:
+        targetScreen = const HomeScreen();
+        break;
+    }
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 600),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const HomeScreen(),
+        pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final fadeAnim = CurvedAnimation(
             parent: animation,
@@ -142,7 +172,7 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: _goToHomeScreen,
+        onTap: _goToTargetScreen,
         child: Container(
           width: double.infinity,
           height: double.infinity,
@@ -263,7 +293,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(110),
                                     child: Image.asset(
-                                      'assets/images/penguin_naila.png',
+                                      'assets/images/penguin_naila.webp',
                                       fit: BoxFit.contain,
                                     ),
                                   ),
@@ -290,7 +320,7 @@ class _SplashScreenState extends State<SplashScreen>
                 top: MediaQuery.of(context).padding.top + 14,
                 right: 20,
                 child: TextButton(
-                  onPressed: _goToHomeScreen,
+                  onPressed: _goToTargetScreen,
                   style: TextButton.styleFrom(
                     backgroundColor: Colors.white.withValues(alpha: 0.85),
                     padding: const EdgeInsets.symmetric(
@@ -387,6 +417,17 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
+  String get _loadingMessage {
+    switch (_targetMenu) {
+      case AppDrawerMenu.kasir:
+        return 'Membuka Kasir...';
+      case AppDrawerMenu.riwayatTransaksi:
+        return 'Membuka Riwayat...';
+      case AppDrawerMenu.admin:
+        return 'Membuka Katalog...';
+    }
+  }
+
   Widget _buildBottomIndicator() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -405,9 +446,9 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
             const SizedBox(width: 10),
-            const Text(
-              'Membuka Katalog...',
-              style: TextStyle(
+            Text(
+              _loadingMessage,
+              style: const TextStyle(
                 fontFamily: AppTheme.fontFamily,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,

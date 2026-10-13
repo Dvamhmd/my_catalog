@@ -32,24 +32,32 @@ class CustomImageView extends StatelessWidget {
     final radius = borderRadius ?? BorderRadius.circular(12);
 
     final cleanPath = imagePath?.trim();
-    final int? targetCacheWidth = (width != null && width!.isFinite && width! > 0) ? (width! * 2).toInt() : null;
-    final int? targetCacheHeight = (height != null && height!.isFinite && height! > 0) ? (height! * 2).toInt() : null;
+    final double? safeWidth = (width != null && width!.isFinite) ? width : null;
+    final double? safeHeight = (height != null && height!.isFinite) ? height : null;
 
     Widget imageContent;
 
     if (cleanPath != null && cleanPath.isNotEmpty) {
-      if (cleanPath.startsWith('data:image') ||
+      if (cleanPath.startsWith('assets/')) {
+        imageContent = Image.asset(
+          cleanPath,
+          width: safeWidth,
+          height: safeHeight,
+          fit: fit,
+          alignment: Alignment.center,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+        );
+      } else if (cleanPath.startsWith('data:image') ||
           (cleanPath.length > 100 && !cleanPath.contains('/') && !cleanPath.contains('\\'))) {
         try {
           final base64Str = cleanPath.contains(',') ? cleanPath.split(',').last : cleanPath;
           final bytes = base64Decode(base64Str);
           imageContent = Image.memory(
             bytes,
-            width: width,
-            height: height,
+            width: safeWidth,
+            height: safeHeight,
             fit: fit,
-            cacheWidth: targetCacheWidth,
-            cacheHeight: targetCacheHeight,
+            alignment: Alignment.center,
             errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
           );
         } catch (_) {
@@ -58,11 +66,10 @@ class CustomImageView extends StatelessWidget {
       } else if (kIsWeb || cleanPath.startsWith('blob:') || cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
         imageContent = Image.network(
           cleanPath,
-          width: width,
-          height: height,
+          width: safeWidth,
+          height: safeHeight,
           fit: fit,
-          cacheWidth: targetCacheWidth,
-          cacheHeight: targetCacheHeight,
+          alignment: Alignment.center,
           errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
         );
       } else {
@@ -70,22 +77,20 @@ class CustomImageView extends StatelessWidget {
           final file = io.File(cleanPath);
           imageContent = Image.file(
             file,
-            width: width,
-            height: height,
+            width: safeWidth,
+            height: safeHeight,
             fit: fit,
-            cacheWidth: targetCacheWidth,
-            cacheHeight: targetCacheHeight,
+            alignment: Alignment.center,
             errorBuilder: (context, error, stackTrace) {
               try {
                 final base64Str = cleanPath.contains(',') ? cleanPath.split(',').last : cleanPath;
                 final bytes = base64Decode(base64Str);
                 return Image.memory(
                   bytes,
-                  width: width,
-                  height: height,
+                  width: safeWidth,
+                  height: safeHeight,
                   fit: fit,
-                  cacheWidth: targetCacheWidth,
-                  cacheHeight: targetCacheHeight,
+                  alignment: Alignment.center,
                   errorBuilder: (c, e, s) => _buildPlaceholder(),
                 );
               } catch (_) {

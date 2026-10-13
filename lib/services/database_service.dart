@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/category_type.dart';
 import '../models/menu_item_model.dart';
 import '../models/sub_category_model.dart';
+import '../models/transaction_model.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -17,9 +18,11 @@ class DatabaseService {
   // In-memory cache for ultra-fast queries (0ms UI latency)
   final List<SubCategoryModel> _cachedSubCategories = [];
   final List<MenuItemModel> _cachedMenuItems = [];
+  final List<TransactionModel> _cachedTransactions = [];
 
   static const String _prefSubCatsKey = 'my_catalog_sub_categories_json';
   static const String _prefMenuItemsKey = 'my_catalog_menu_items_json';
+  static const String _prefTransactionsKey = 'my_catalog_transactions_json';
   static const String _prefCleanResetKey = 'my_catalog_clean_reset_v2';
 
   DatabaseService._init();
@@ -41,6 +44,7 @@ class DatabaseService {
         await _initFallbackStorage();
       }
     }
+    await _syncLocalAssetImages();
     _isInitialized = true;
   }
 
@@ -55,9 +59,9 @@ class DatabaseService {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
-      version: 3,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -72,8 +76,31 @@ class DatabaseService {
             await db.delete('sub_categories');
           } catch (_) {}
         }
+        if (oldVersion < 4) {
+          try {
+            await db.execute('ALTER TABLE menu_items ADD COLUMN stock INTEGER NOT NULL DEFAULT 0;');
+          } catch (_) {}
+        }
       },
     );
+
+    // Pastikan tabel transactions tersedia
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          total_amount REAL NOT NULL,
+          payment_method TEXT NOT NULL,
+          cash_given REAL NOT NULL,
+          change REAL NOT NULL,
+          items_json TEXT NOT NULL
+        );
+      ''');
+    } catch (_) {}
+
+    return db;
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -100,6 +127,7 @@ class DatabaseService {
         sub_category_id INTEGER NOT NULL,
         sub_category_name TEXT NOT NULL,
         type TEXT NOT NULL,
+        stock INTEGER NOT NULL DEFAULT 0,
         description TEXT,
         is_available INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
@@ -114,6 +142,23 @@ class DatabaseService {
       CREATE INDEX idx_menu_items_sub_category ON menu_items(sub_category_id);
     ''');
 
+    await db.execute('''
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        payment_method TEXT NOT NULL,
+        cash_given REAL NOT NULL,
+        change REAL NOT NULL,
+        items_json TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_transactions_created_at ON transactions(created_at);
+    ''');
+
     // Data dimulai dari awal benar-benar kosong (tanpa dummy)
   }
 
@@ -125,9 +170,13 @@ class DatabaseService {
         if (_database != null) {
           await _database!.delete('menu_items');
           await _database!.delete('sub_categories');
+          try {
+            await _database!.delete('transactions');
+          } catch (_) {}
         }
         await prefs.remove(_prefSubCatsKey);
         await prefs.remove(_prefMenuItemsKey);
+        await prefs.remove(_prefTransactionsKey);
         await prefs.setBool(_prefCleanResetKey, true);
       }
     } catch (e) {
@@ -145,6 +194,12 @@ class DatabaseService {
       final menuMaps = await _database!.query('menu_items', orderBy: 'is_available DESC, name COLLATE NOCASE ASC');
       _cachedMenuItems.clear();
       _cachedMenuItems.addAll(menuMaps.map((m) => MenuItemModel.fromMap(m)));
+
+      try {
+        final trxMaps = await _database!.query('transactions', orderBy: 'created_at DESC');
+        _cachedTransactions.clear();
+        _cachedTransactions.addAll(trxMaps.map((m) => TransactionModel.fromMap(m)));
+      } catch (_) {}
     } catch (e) {
       debugPrint('Error populating cache from SQLite: $e');
     }
@@ -161,6 +216,7 @@ class DatabaseService {
         // Hapus data dummy bawaan sebelumnya agar bersih dari 0
         _cachedSubCategories.clear();
         _cachedMenuItems.clear();
+        _cachedTransactions.clear();
         await _saveFallbackToPrefs();
         await prefs.setBool(_prefCleanResetKey, true);
         return;
@@ -168,6 +224,7 @@ class DatabaseService {
 
       final subJson = prefs.getString(_prefSubCatsKey);
       final menuJson = prefs.getString(_prefMenuItemsKey);
+      final trxJson = prefs.getString(_prefTransactionsKey);
 
       if (subJson != null && menuJson != null) {
         final List<dynamic> subList = jsonDecode(subJson);
@@ -185,12 +242,30 @@ class DatabaseService {
       } else {
         _cachedSubCategories.clear();
         _cachedMenuItems.clear();
+      }
+
+      if (trxJson != null) {
+        try {
+          final List<dynamic> trxList = jsonDecode(trxJson);
+          _cachedTransactions.clear();
+          _cachedTransactions.addAll(
+            trxList.map((m) => TransactionModel.fromMap(Map<String, dynamic>.from(m))),
+          );
+        } catch (_) {
+          _cachedTransactions.clear();
+        }
+      } else {
+        _cachedTransactions.clear();
+      }
+
+      if (subJson == null || menuJson == null) {
         await _saveFallbackToPrefs();
       }
     } catch (e) {
       debugPrint('Error initializing fallback storage: $e');
       _cachedSubCategories.clear();
       _cachedMenuItems.clear();
+      _cachedTransactions.clear();
     }
   }
 
@@ -199,10 +274,80 @@ class DatabaseService {
       final prefs = await SharedPreferences.getInstance();
       final subJson = jsonEncode(_cachedSubCategories.map((s) => s.toMap()).toList());
       final menuJson = jsonEncode(_cachedMenuItems.map((m) => m.toMap()).toList());
+      final trxJson = jsonEncode(_cachedTransactions.map((t) => t.toMap()).toList());
       await prefs.setString(_prefSubCatsKey, subJson);
       await prefs.setString(_prefMenuItemsKey, menuJson);
+      await prefs.setString(_prefTransactionsKey, trxJson);
     } catch (e) {
       debugPrint('Error saving to SharedPreferences: $e');
+    }
+  }
+
+  // Mapping sinkronisasi gambar dummy ke asset lokal
+  static const Map<String, String> _subCategoryAssetMap = {
+    'Main Course': 'assets/images/kategori_main_course.webp',
+    'Dessert': 'assets/images/kategori_dessert.webp',
+  };
+
+  static const Map<String, String> _menuItemAssetMap = {
+    'French Fries Crispy': 'assets/images/makanan_french_fries.webp',
+    'Cireng Bumbu Rujak': 'assets/images/makanan_cireng_bumbu_rujak.webp',
+    'Dimsum Ayam Mentai': 'assets/images/makanan_dimsum_mentai.webp',
+    'Pisang Bakar Coklat Keju': 'assets/images/makanan_pisang_bakar_coklat_keju.webp',
+    'Matcha Latte Creamy': 'assets/images/minuman_matcha_latte.webp',
+    'Choco Hazelnut Milk': 'assets/images/minuman_choco_hazelnut.webp',
+    'Strawberry Milk Breeze': 'assets/images/minuman_strawberry_milk.webp',
+    'Lemon Tea Segar': 'assets/images/minuman_lemon_tea.webp',
+    'Orange Sunrise Squash': 'assets/images/minuman_orange_squash.webp',
+    'Jus Alpukat Kocok Kental': 'assets/images/minuman_jus_alpukat.webp',
+    'Jus Mangga Harum Manis': 'assets/images/minuman_jus_mangga.webp',
+  };
+
+  Future<void> _syncLocalAssetImages() async {
+    bool updated = false;
+
+    // 1. Sync SubCategories cache & persistence
+    for (int i = 0; i < _cachedSubCategories.length; i++) {
+      final sub = _cachedSubCategories[i];
+      final targetAsset = _subCategoryAssetMap[sub.name];
+      if (targetAsset != null && sub.imagePath != targetAsset) {
+        _cachedSubCategories[i] = sub.copyWith(imagePath: targetAsset);
+        updated = true;
+        if (!_useFallbackStorage && _database != null && sub.id != null) {
+          try {
+            await _database!.update(
+              'sub_categories',
+              {'image_path': targetAsset},
+              where: 'id = ?',
+              whereArgs: [sub.id],
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 2. Sync MenuItems cache & persistence
+    for (int i = 0; i < _cachedMenuItems.length; i++) {
+      final item = _cachedMenuItems[i];
+      final targetAsset = _menuItemAssetMap[item.name];
+      if (targetAsset != null && item.imagePath != targetAsset) {
+        _cachedMenuItems[i] = item.copyWith(imagePath: targetAsset);
+        updated = true;
+        if (!_useFallbackStorage && _database != null && item.id != null) {
+          try {
+            await _database!.update(
+              'menu_items',
+              {'image_path': targetAsset},
+              where: 'id = ?',
+              whereArgs: [item.id],
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (updated && _useFallbackStorage) {
+      await _saveFallbackToPrefs();
     }
   }
 
@@ -328,6 +473,25 @@ class DatabaseService {
       });
   }
 
+  /// Mengambil semua menu tanpa filter kategori/sub-kategori
+  Future<List<MenuItemModel>> getAllMenuItems() async {
+    if (!_isInitialized) await initialize();
+    return List.unmodifiable(_cachedMenuItems);
+  }
+
+  /// Mengambil menu berdasarkan ID dari memori cache secara sinkron
+  MenuItemModel? getCachedMenuItemById(int id) {
+    final index = _cachedMenuItems.indexWhere((m) => m.id == id);
+    if (index != -1) return _cachedMenuItems[index];
+    return null;
+  }
+
+  /// Mengambil menu berdasarkan ID
+  Future<MenuItemModel?> getMenuItemById(int id) async {
+    if (!_isInitialized) await initialize();
+    return getCachedMenuItemById(id);
+  }
+
   Future<int> getMenuItemCount({
     required CategoryType type,
     int? subCategoryId,
@@ -437,6 +601,139 @@ class DatabaseService {
       } catch (_) {}
     } else {
       unawaited(_saveFallbackToPrefs());
+    }
+  }
+
+  Future<void> updateMenuItemStock(int id, int newStock) async {
+    if (!_isInitialized) await initialize();
+
+    final safeStock = newStock < 0 ? 0 : newStock;
+    final index = _cachedMenuItems.indexWhere((m) => m.id == id);
+    bool shouldBeAvailable = safeStock > 0;
+    if (index != -1) {
+      final current = _cachedMenuItems[index];
+      shouldBeAvailable = safeStock > 0 ? true : false;
+      _cachedMenuItems[index] = current.copyWith(
+        stock: safeStock,
+        isAvailable: shouldBeAvailable,
+      );
+    }
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.update(
+          'menu_items',
+          {
+            'stock': safeStock,
+            'is_available': shouldBeAvailable ? 1 : 0,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } catch (_) {}
+    } else {
+      await _saveFallbackToPrefs();
+    }
+  }
+
+  Future<bool> checkoutOrder(Map<int, int> itemQuantities) async {
+    if (!_isInitialized) await initialize();
+    if (itemQuantities.isEmpty) return true;
+
+    for (final entry in itemQuantities.entries) {
+      final id = entry.key;
+      final qty = entry.value;
+      final index = _cachedMenuItems.indexWhere((m) => m.id == id);
+      if (index != -1) {
+        final current = _cachedMenuItems[index];
+        final remainingStock = (current.stock - qty).clamp(0, 999999);
+        _cachedMenuItems[index] = current.copyWith(
+          stock: remainingStock,
+          isAvailable: remainingStock > 0 ? current.isAvailable : false,
+        );
+
+        if (!_useFallbackStorage && _database != null) {
+          try {
+            await _database!.update(
+              'menu_items',
+              {
+                'stock': remainingStock,
+                'is_available': remainingStock > 0 && current.isAvailable ? 1 : 0,
+              },
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (_useFallbackStorage || _database == null) {
+      unawaited(_saveFallbackToPrefs());
+    }
+
+    return true;
+  }
+
+  // ==================== TRANSACTION / SALES HISTORY CRUD ====================
+
+  Future<List<TransactionModel>> getTransactions() async {
+    if (!_isInitialized) await initialize();
+    return List<TransactionModel>.from(_cachedTransactions);
+  }
+
+  Future<int> saveTransaction(TransactionModel trx) async {
+    if (!_isInitialized) await initialize();
+
+    int newId = DateTime.now().millisecondsSinceEpoch % 10000000;
+    if (_cachedTransactions.isNotEmpty) {
+      final maxId = _cachedTransactions.map((t) => t.id ?? 0).fold(0, (max, id) => id > max ? id : max);
+      newId = maxId + 1;
+    }
+
+    final newModel = trx.copyWith(id: newId);
+    _cachedTransactions.insert(0, newModel); // Transaksi terbaru di posisi pertama
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.insert('transactions', newModel.toMap());
+      } catch (e) {
+        debugPrint('Error inserting transaction: $e');
+      }
+    } else {
+      await _saveFallbackToPrefs();
+    }
+
+    return newId;
+  }
+
+  Future<bool> deleteTransaction(int id) async {
+    if (!_isInitialized) await initialize();
+
+    _cachedTransactions.removeWhere((t) => t.id == id);
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.delete('transactions', where: 'id = ?', whereArgs: [id]);
+      } catch (_) {}
+    } else {
+      await _saveFallbackToPrefs();
+    }
+
+    return true;
+  }
+
+  Future<void> clearTransactions() async {
+    if (!_isInitialized) await initialize();
+
+    _cachedTransactions.clear();
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.delete('transactions');
+      } catch (_) {}
+    } else {
+      await _saveFallbackToPrefs();
     }
   }
 
