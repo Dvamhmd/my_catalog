@@ -22,10 +22,10 @@ class FolderCardLarge extends StatelessWidget {
     final iconData = subCategory.type.icon;
 
     return Container(
-      constraints: const BoxConstraints(minHeight: 88),
+      constraints: const BoxConstraints(minHeight: 74),
       decoration: BoxDecoration(
         color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: const Color(0xFFFFE0E6),
           width: 1.2,
@@ -33,8 +33,8 @@ class FolderCardLarge extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: Color(0x0FFF5D8F),
-            blurRadius: 10,
-            offset: Offset(0, 3),
+            blurRadius: 6,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -43,31 +43,31 @@ class FolderCardLarge extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             child: Row(
               children: [
                 // Food / Drink Icon or Custom Photo Graphic Container
                 Container(
-                  width: 70,
-                  height: 70,
+                  width: 60,
+                  height: 60,
                   decoration: BoxDecoration(
                     color: AppTheme.softPinkBackground,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: const Color(0xFFFFE0E6),
                       width: 1,
                     ),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(11),
                     child: CustomImageView(
                       imagePath: subCategory.imagePath,
                       type: subCategory.type,
                       isCategory: true,
-                      width: 70,
-                      height: 70,
+                      width: 60,
+                      height: 60,
                       fit: BoxFit.cover,
                     ),
                   ),

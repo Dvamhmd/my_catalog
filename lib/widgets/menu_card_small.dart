@@ -46,7 +46,7 @@ class MenuCardSmall extends StatelessWidget {
             children: [
               // Image Top Section
               Expanded(
-                flex: 14,
+                flex: 10,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -111,7 +111,7 @@ class MenuCardSmall extends StatelessWidget {
 
               // Details Bottom Section
               Expanded(
-                flex: 5,
+                flex: 7,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(7, 4, 7, 4),
                   child: Column(

@@ -26,15 +26,14 @@ import 'home_screen.dart';
 import 'transaction_history_screen.dart';
 
 enum PaymentMethod {
-  tunai('Tunai (Cash)', Icons.payments_rounded),
-  qris('QRIS', Icons.qr_code_scanner_rounded),
-  transfer('Transfer Bank', Icons.account_balance_rounded),
-  debit('Debit / EDC', Icons.credit_card_rounded);
+  cash('Cash', Icons.payments_rounded),
+  qris('QRIS', Icons.qr_code_scanner_rounded);
 
   final String title;
   final IconData icon;
   const PaymentMethod(this.title, this.icon);
 }
+
 
 class KasirScreen extends StatefulWidget {
   const KasirScreen({super.key});
@@ -709,7 +708,7 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                   ),
                 ],
               ),
-              if (method == PaymentMethod.tunai) ...[
+              if (method == PaymentMethod.cash) ...[
                 const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1327,7 +1326,7 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
           bottom: 110,
         ),
         itemCount: subCategories.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 6),
+        separatorBuilder: (context, index) => const SizedBox(height: 4),
         itemBuilder: (context, index) {
           final sub = subCategories[index];
           final count = _subCategoryCounts[sub.id] ?? 0;
@@ -1396,7 +1395,7 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
           bottom: 110,
         ),
         itemCount: _menuItems.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
+        separatorBuilder: (context, index) => const SizedBox(height: 6),
         itemBuilder: (context, index) {
           final item = _menuItems[index];
           final cartQty = _cart[item.id] ?? 0;
@@ -1706,9 +1705,10 @@ class _CheckoutModal extends StatefulWidget {
 
 class _CheckoutModalState extends State<_CheckoutModal> {
   late Map<int, int> _localCart;
-  PaymentMethod _selectedMethod = PaymentMethod.tunai;
+  PaymentMethod _selectedMethod = PaymentMethod.cash;
   late TextEditingController _cashInputController;
   bool _isProcessing = false;
+  bool _hasCashError = false;
 
   @override
   void initState() {
@@ -1743,7 +1743,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
   }
 
   double get _cashGiven {
-    if (_selectedMethod != PaymentMethod.tunai) return _totalAmount;
+    if (_selectedMethod != PaymentMethod.cash) return _totalAmount;
     final parsed = Formatters.parseCurrencyInput(_cashInputController.text);
     return parsed ?? 0;
   }
@@ -1754,14 +1754,28 @@ class _CheckoutModalState extends State<_CheckoutModal> {
     if (_localCart.isEmpty) return;
 
     final total = _totalAmount;
-    if (_selectedMethod == PaymentMethod.tunai && _cashGiven < total) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Nominal uang tunai kurang dari total tagihan'),
-          backgroundColor: AppTheme.dangerRed,
-        ),
-      );
-      return;
+    if (_selectedMethod == PaymentMethod.cash) {
+      final textTrim = _cashInputController.text.trim();
+      final isNotEntered = textTrim.isEmpty || _cashGiven == 0;
+      if (isNotEntered) {
+        setState(() => _hasCashError = true);
+        CashWarningPopup.show(
+          context,
+          title: 'Uang Belum Diinput',
+          message: 'Silakan masukkan nominal uang tunai yang diterima.',
+        );
+        return;
+      }
+      if (_cashGiven < total) {
+        setState(() => _hasCashError = true);
+        final shortage = total - _cashGiven;
+        CashWarningPopup.show(
+          context,
+          title: 'Nominal Uang Kurang',
+          message: 'Uang tunai kurang ${Formatters.currency(shortage)} dari total tagihan.',
+        );
+        return;
+      }
     }
 
     setState(() => _isProcessing = true);
@@ -1807,8 +1821,8 @@ class _CheckoutModalState extends State<_CheckoutModal> {
       // Simpan ke riwayat transaksi database
       final now = DateTime.now();
       final invoiceNum = 'TRX-${now.millisecondsSinceEpoch.toString().substring(5)}';
-      final actualCashGiven = _selectedMethod == PaymentMethod.tunai ? _cashGiven : total;
-      final actualChange = _selectedMethod == PaymentMethod.tunai ? _changeAmount : 0.0;
+      final actualCashGiven = _selectedMethod == PaymentMethod.cash ? _cashGiven : total;
+      final actualChange = _selectedMethod == PaymentMethod.cash ? _changeAmount : 0.0;
 
       final transactionRecord = TransactionModel(
         invoiceNumber: invoiceNum,
@@ -2079,18 +2093,21 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: PaymentMethod.values.map((m) {
-                        final isSel = _selectedMethod == m;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
+                  Row(
+                    children: PaymentMethod.values.map((m) {
+                      final isSel = _selectedMethod == m;
+                      final isFirst = m == PaymentMethod.values.first;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: isFirst ? 8 : 0),
                           child: InkWell(
-                            onTap: () => setState(() => _selectedMethod = m),
+                            onTap: () => setState(() {
+                              _selectedMethod = m;
+                              _hasCashError = false;
+                            }),
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                               decoration: BoxDecoration(
                                 color: isSel ? AppTheme.primaryPink : AppTheme.softPinkBackground,
                                 borderRadius: BorderRadius.circular(10),
@@ -2099,19 +2116,19 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                 ),
                               ),
                               child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
                                     m.icon,
-                                    size: 15,
+                                    size: 16,
                                     color: isSel ? Colors.white : AppTheme.primaryPinkDark,
                                   ),
-                                  const SizedBox(width: 5),
+                                  const SizedBox(width: 6),
                                   Text(
                                     m.title,
                                     style: TextStyle(
                                       fontFamily: AppTheme.fontFamily,
-                                      fontSize: 11.5,
+                                      fontSize: 12,
                                       fontWeight: isSel ? FontWeight.w700 : FontWeight.w600,
                                       color: isSel ? Colors.white : AppTheme.textDark,
                                     ),
@@ -2120,13 +2137,12 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                               ),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
+                        ),
+                      );
+                    }).toList(),
                   ),
 
-                  // If Tunai: Cash Input & Quick money pills
-                  if (_selectedMethod == PaymentMethod.tunai) ...[
+                  if (_selectedMethod == PaymentMethod.cash) ...[
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -2135,7 +2151,13 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                             controller: _cashInputController,
                             keyboardType: TextInputType.number,
                             inputFormatters: [CurrencyInputFormatter()],
-                            onChanged: (_) => setState(() {}),
+                            onChanged: (_) {
+                              if (_hasCashError) {
+                                setState(() => _hasCashError = false);
+                              } else {
+                                setState(() {});
+                              }
+                            },
                             style: const TextStyle(
                               fontFamily: AppTheme.fontFamily,
                               fontSize: 14,
@@ -2151,11 +2173,16 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                               ),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               hintText: '0',
+                              errorText: _hasCashError
+                                  ? (_cashInputController.text.trim().isEmpty || _cashGiven == 0
+                                      ? 'Uang belum diinput'
+                                      : 'Uang kurang ${Formatters.currency((total - _cashGiven) > 0 ? (total - _cashGiven) : 0.0)}')
+                                  : null,
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.clear_rounded, size: 16),
                                 onPressed: () {
                                   _cashInputController.clear();
-                                  setState(() {});
+                                  setState(() => _hasCashError = false);
                                 },
                               ),
                             ),
@@ -2171,7 +2198,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                           ),
                           onPressed: () {
                             _cashInputController.text = Formatters.formatNumber(total);
-                            setState(() {});
+                            setState(() => _hasCashError = false);
                           },
                           child: const Text(
                             'Uang Pas',
@@ -2283,6 +2310,14 @@ class StockLimitPopup {
   static OverlayEntry? _activeEntry;
   static Timer? _dismissTimer;
 
+  static void dismiss() {
+    _dismissTimer?.cancel();
+    try {
+      _activeEntry?.remove();
+    } catch (_) {}
+    _activeEntry = null;
+  }
+
   static void show(
     BuildContext context, {
     required String itemName,
@@ -2291,11 +2326,8 @@ class StockLimitPopup {
   }) {
     HapticFeedback.heavyImpact();
 
-    _dismissTimer?.cancel();
-    try {
-      _activeEntry?.remove();
-    } catch (_) {}
-    _activeEntry = null;
+    dismiss();
+    CashWarningPopup.dismiss();
 
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
@@ -2494,3 +2526,219 @@ class _StockLimitPopupWidgetState extends State<_StockLimitPopupWidget>
     );
   }
 }
+
+class CashWarningPopup {
+  static OverlayEntry? _activeEntry;
+  static Timer? _dismissTimer;
+
+  static void dismiss() {
+    _dismissTimer?.cancel();
+    try {
+      _activeEntry?.remove();
+    } catch (_) {}
+    _activeEntry = null;
+  }
+
+  static void show(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    HapticFeedback.heavyImpact();
+
+    StockLimitPopup.dismiss();
+    dismiss();
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => _CashWarningPopupWidget(
+        title: title,
+        message: message,
+        onDismiss: () {
+          _dismissTimer?.cancel();
+          try {
+            entry.remove();
+          } catch (_) {}
+          if (_activeEntry == entry) _activeEntry = null;
+        },
+      ),
+    );
+
+    _activeEntry = entry;
+    overlay.insert(entry);
+
+    _dismissTimer = Timer(const Duration(milliseconds: 2800), () {
+      try {
+        entry.remove();
+      } catch (_) {}
+      if (_activeEntry == entry) _activeEntry = null;
+    });
+  }
+}
+
+class _CashWarningPopupWidget extends StatefulWidget {
+  final String title;
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _CashWarningPopupWidget({
+    required this.title,
+    required this.message,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_CashWarningPopupWidget> createState() => _CashWarningPopupWidgetState();
+}
+
+class _CashWarningPopupWidgetState extends State<_CashWarningPopupWidget>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.6),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutBack,
+    ));
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOut,
+    );
+
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _dismiss() async {
+    if (!mounted) return;
+    await _animController.reverse();
+    widget.onDismiss();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: Material(
+                color: Colors.transparent,
+                child: GestureDetector(
+                  onTap: _dismiss,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF0F3),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFFFB3C1), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.14),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                        BoxShadow(
+                          color: AppTheme.dangerRed.withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: AppTheme.dangerRed,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.payments_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.title,
+                                style: const TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF900C3F),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.message,
+                                style: const TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.textDark,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _dismiss,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: 16,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

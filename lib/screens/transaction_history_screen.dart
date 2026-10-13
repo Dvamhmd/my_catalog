@@ -869,7 +869,8 @@ class _ReceiptDetailDialog extends StatelessWidget {
                 'Metode Pembayaran',
                 transaction.paymentMethod,
               ),
-              if (transaction.paymentMethod.toLowerCase().contains('tunai')) ...[
+              if (transaction.paymentMethod.toLowerCase().contains('tunai') ||
+                  transaction.paymentMethod.toLowerCase().contains('cash')) ...[
                 const SizedBox(height: 6),
                 _buildDetailRow(
                   'Uang Diterima',

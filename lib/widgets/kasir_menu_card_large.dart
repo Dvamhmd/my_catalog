@@ -26,7 +26,7 @@ class KasirMenuCardLarge extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
               ? AppTheme.primaryPink
@@ -38,8 +38,8 @@ class KasirMenuCardLarge extends StatelessWidget {
             color: isSelected
                 ? AppTheme.primaryPink.withValues(alpha: 0.16)
                 : const Color(0x0FFF5D8F),
-            blurRadius: isSelected ? 12 : 10,
-            offset: const Offset(0, 3),
+            blurRadius: isSelected ? 8 : 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -47,9 +47,9 @@ class KasirMenuCardLarge extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: isOutOfStock ? null : () => onAddToCart(context),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -59,9 +59,9 @@ class KasirMenuCardLarge extends StatelessWidget {
                     CustomImageView(
                       imagePath: item.imagePath,
                       type: item.type,
-                      width: 96,
-                      height: 96,
-                      borderRadius: BorderRadius.circular(14),
+                      width: 82,
+                      height: 82,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     if (isOutOfStock)
                       Positioned.fill(

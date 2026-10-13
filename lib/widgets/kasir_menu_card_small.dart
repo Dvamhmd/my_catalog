@@ -53,7 +53,7 @@ class KasirMenuCardSmall extends StatelessWidget {
             children: [
               // Image Top Section
               Expanded(
-                flex: 14,
+                flex: 10,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -146,72 +146,120 @@ class KasirMenuCardSmall extends StatelessWidget {
 
               // Details Bottom Section
               Expanded(
-                flex: 5,
+                flex: 7,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(7, 3, 7, 3),
+                  padding: const EdgeInsets.fromLTRB(7, 3, 7, 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // 1. Nama Menu
                       Text(
                         item.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: AppTheme.fontFamily,
-                          fontSize: 11.5,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: isOutOfStock ? AppTheme.textLight : AppTheme.textDark,
                         ),
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                Formatters.currency(item.price),
-                                style: TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: isOutOfStock
-                                      ? AppTheme.primaryPink.withValues(alpha: 0.38)
-                                      : AppTheme.primaryPink,
-                                ),
-                              ),
-                            ),
+
+                      // 2. Harga Menu di start (dibawah nama menu)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          Formatters.currency(item.price),
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: isOutOfStock
+                                ? AppTheme.primaryPink.withValues(alpha: 0.38)
+                                : AppTheme.primaryPink,
                           ),
-                          if (!isOutOfStock)
-                            if (isSelected)
-                              Builder(
-                                builder: (btnCtx) => GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () => onAddToCart(btnCtx),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(
-                                      color: AppTheme.primaryPink,
-                                      shape: BoxShape.circle,
+                        ),
+                      ),
+
+                      // 3. Tombol di bottom end (kanan bawah)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: !isOutOfStock
+                            ? (isSelected
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: onDecrement,
+                                        child: Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.softPinkBackground,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: const Color(0xFFFFD1DC),
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.remove_rounded,
+                                            size: 12,
+                                            color: AppTheme.primaryPinkDark,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '$cartQty',
+                                        style: const TextStyle(
+                                          fontFamily: AppTheme.fontFamily,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Builder(
+                                        builder: (btnCtx) => GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () => onAddToCart(btnCtx),
+                                          child: Container(
+                                            width: 20,
+                                            height: 20,
+                                            decoration: const BoxDecoration(
+                                              color: AppTheme.primaryPink,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.add_rounded,
+                                              size: 12,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Builder(
+                                    builder: (btnCtx) => Container(
+                                      width: 20,
+                                      height: 20,
+                                      decoration: const BoxDecoration(
+                                        color: AppTheme.softPinkBackground,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.add_shopping_cart_rounded,
+                                        size: 11.5,
+                                        color: AppTheme.primaryPinkDark,
+                                      ),
                                     ),
-                                    child: const Icon(Icons.add_rounded, size: 12, color: Colors.white),
-                                  ),
-                                ),
-                              )
-                            else
-                              Builder(
-                                builder: (btnCtx) => Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(
-                                    color: AppTheme.softPinkBackground,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.add_shopping_cart_rounded, size: 12, color: AppTheme.primaryPinkDark),
-                                ),
-                              ),
-                        ],
+                                  ))
+                            : const SizedBox(height: 20),
                       ),
                     ],
                   ),

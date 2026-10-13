@@ -21,7 +21,7 @@ class MenuCardLarge extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isOutOfStock
               ? const Color(0xFFE5E5E5)
@@ -31,8 +31,8 @@ class MenuCardLarge extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: Color(0x0FFF5D8F),
-            blurRadius: 10,
-            offset: Offset(0, 3),
+            blurRadius: 6,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -40,9 +40,9 @@ class MenuCardLarge extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -52,9 +52,9 @@ class MenuCardLarge extends StatelessWidget {
                     CustomImageView(
                       imagePath: item.imagePath,
                       type: item.type,
-                      width: 96,
-                      height: 96,
-                      borderRadius: BorderRadius.circular(14),
+                      width: 82,
+                      height: 82,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     if (isOutOfStock)
                       Positioned.fill(

@@ -51,9 +51,9 @@ class Responsive {
 
       case 3:
         // 3 columns (Kecil)
-        if (width > 600) return 0.94 - scaleAdjust;
-        if (width < 360) return 0.68 - scaleAdjust;
-        return 0.74 - scaleAdjust;
+        if (width > 600) return 0.85 - scaleAdjust;
+        if (width < 360) return 0.60 - scaleAdjust;
+        return 0.66 - scaleAdjust;
 
       case 2:
       default:

@@ -22,10 +22,10 @@ class AddFolderCard extends StatelessWidget {
     if (layoutMode == LayoutMode.large) {
       // 1 Column / Perbaris
       return Container(
-        height: 80,
+        height: 70,
         decoration: BoxDecoration(
           color: AppTheme.softPinkBackground.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: const Color(0xFFFFB6C6),
             width: 1.5,

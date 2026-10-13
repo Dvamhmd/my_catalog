@@ -285,22 +285,57 @@ class DatabaseService {
 
   // Mapping sinkronisasi gambar dummy ke asset lokal
   static const Map<String, String> _subCategoryAssetMap = {
+    'Snack': 'assets/images/kategori_snack.webp',
     'Main Course': 'assets/images/kategori_main_course.webp',
     'Dessert': 'assets/images/kategori_dessert.webp',
+    'Milk Based': 'assets/images/kategori_milk_based.webp',
+    'Coffee': 'assets/images/kategori_coffee.webp',
+    'Tea': 'assets/images/kategori_tea.webp',
+    'Squash': 'assets/images/kategori_squash.webp',
+    'Juice': 'assets/images/kategori_juice.webp',
   };
 
   static const Map<String, String> _menuItemAssetMap = {
+    // Snack
     'French Fries Crispy': 'assets/images/makanan_french_fries.webp',
     'Cireng Bumbu Rujak': 'assets/images/makanan_cireng_bumbu_rujak.webp',
     'Dimsum Ayam Mentai': 'assets/images/makanan_dimsum_mentai.webp',
     'Pisang Bakar Coklat Keju': 'assets/images/makanan_pisang_bakar_coklat_keju.webp',
+    // Main Course
+    'Nasi Goreng Spesial Telur': 'assets/images/makanan_nasi_goreng.webp',
+    'Ayam Geprek Sambal Bawang': 'assets/images/makanan_ayam_geprek.webp',
+    'Mie Goreng Seafood': 'assets/images/makanan_mie_goreng.webp',
+    'Beef Rice Bowl Teriyaki': 'assets/images/makanan_beef_rice_bowl.webp',
+    // Dessert
+    'Pancake Fluffy Strawberry': 'assets/images/makanan_pancake_fluffy.webp',
+    'Croffle Caramel Crunch': 'assets/images/makanan_croffle_caramel.webp',
+    'Chewy Fudgy Brownie': 'assets/images/makanan_chewy_brownie.webp',
+    'Molten Choco Lava Cake': 'assets/images/makanan_choco_lava.webp',
+    // Milk Based
     'Matcha Latte Creamy': 'assets/images/minuman_matcha_latte.webp',
     'Choco Hazelnut Milk': 'assets/images/minuman_choco_hazelnut.webp',
     'Strawberry Milk Breeze': 'assets/images/minuman_strawberry_milk.webp',
+    'Taro Velvety Milk': 'assets/images/minuman_taro_milk.webp',
+    // Coffee
+    'Kopi Susu Gula Aren': 'assets/images/minuman_kopi_susu.webp',
+    'Caramel Macchiato Ice': 'assets/images/minuman_caramel_macchiato.webp',
+    'Americano Double Shot': 'assets/images/minuman_americano.webp',
+    'Vanilla Latte Iced': 'assets/images/minuman_vanilla_latte.webp',
+    // Tea
+    'Lychee Iced Tea': 'assets/images/minuman_lychee_tea.webp',
     'Lemon Tea Segar': 'assets/images/minuman_lemon_tea.webp',
+    'Earl Grey Milk Tea': 'assets/images/minuman_earl_grey.webp',
+    'Peach Blossom Tea': 'assets/images/minuman_peach_blossom.webp',
+    // Squash
     'Orange Sunrise Squash': 'assets/images/minuman_orange_squash.webp',
+    'Blue Ocean Soda Squash': 'assets/images/minuman_blue_ocean.webp',
+    'Lemon Mint Fizzy Squash': 'assets/images/minuman_lemon_mint.webp',
+    'Strawberry Mojito Squash': 'assets/images/minuman_strawberry_mojito.webp',
+    // Juice
     'Jus Alpukat Kocok Kental': 'assets/images/minuman_jus_alpukat.webp',
     'Jus Mangga Harum Manis': 'assets/images/minuman_jus_mangga.webp',
+    'Jus Buah Naga Merah': 'assets/images/minuman_jus_buah_naga.webp',
+    'Jus Sirsak Asli Segar': 'assets/images/minuman_jus_sirsak.webp',
   };
 
   Future<void> _syncLocalAssetImages() async {
