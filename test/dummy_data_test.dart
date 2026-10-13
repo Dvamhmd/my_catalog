@@ -67,7 +67,11 @@ void main() {
       expect(item.price > 0, isTrue);
       expect(item.stock > 0, isTrue);
       expect(item.description != null && item.description!.isNotEmpty, isTrue);
-      expect(item.imagePath != null && item.imagePath!.startsWith('http'), isTrue);
+      expect(
+          item.imagePath != null &&
+              (item.imagePath!.startsWith('http') ||
+                  item.imagePath!.startsWith('assets/')),
+          isTrue);
     }
 
     // Disable dummy data

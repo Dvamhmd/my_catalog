@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/category_type.dart';
+import '../models/customer_category_model.dart';
 import '../models/menu_item_model.dart';
 import '../models/sub_category_model.dart';
 import '../models/transaction_model.dart';
@@ -19,10 +20,12 @@ class DatabaseService {
   final List<SubCategoryModel> _cachedSubCategories = [];
   final List<MenuItemModel> _cachedMenuItems = [];
   final List<TransactionModel> _cachedTransactions = [];
+  final List<CustomerCategoryModel> _cachedCustomerCategories = [];
 
   static const String _prefSubCatsKey = 'my_catalog_sub_categories_json';
   static const String _prefMenuItemsKey = 'my_catalog_menu_items_json';
   static const String _prefTransactionsKey = 'my_catalog_transactions_json';
+  static const String _prefCustomerCategoriesKey = 'my_catalog_customer_categories_json';
   static const String _prefCleanResetKey = 'my_catalog_clean_reset_v2';
 
   DatabaseService._init();
@@ -61,7 +64,7 @@ class DatabaseService {
 
     final db = await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _createDB,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -81,6 +84,31 @@ class DatabaseService {
             await db.execute('ALTER TABLE menu_items ADD COLUMN stock INTEGER NOT NULL DEFAULT 0;');
           } catch (_) {}
         }
+        if (oldVersion < 6) {
+          try {
+            await db.execute('ALTER TABLE menu_items ADD COLUMN customer_prices_json TEXT;');
+          } catch (_) {}
+          try {
+            await db.execute('ALTER TABLE transactions ADD COLUMN customer_category TEXT;');
+          } catch (_) {}
+          try {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS customer_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+              );
+            ''');
+            for (final name in defaultCustomerCategoryNames) {
+              await db.insert('customer_categories', {
+                'name': name,
+                'is_default': 1,
+                'created_at': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.ignore);
+            }
+          } catch (_) {}
+        }
       },
     );
 
@@ -95,7 +123,19 @@ class DatabaseService {
           payment_method TEXT NOT NULL,
           cash_given REAL NOT NULL,
           change REAL NOT NULL,
+          customer_category TEXT,
           items_json TEXT NOT NULL
+        );
+      ''');
+    } catch (_) {}
+
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS customer_categories (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
         );
       ''');
     } catch (_) {}
@@ -130,6 +170,7 @@ class DatabaseService {
         stock INTEGER NOT NULL DEFAULT 0,
         description TEXT,
         is_available INTEGER NOT NULL DEFAULT 1,
+        customer_prices_json TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (sub_category_id) REFERENCES sub_categories (id) ON DELETE CASCADE
       )
@@ -151,13 +192,33 @@ class DatabaseService {
         payment_method TEXT NOT NULL,
         cash_given REAL NOT NULL,
         change REAL NOT NULL,
-        items_json TEXT NOT NULL
+        customer_category TEXT,
+        customer_phone TEXT,
+        items_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'selesai'
       )
     ''');
 
     await db.execute('''
       CREATE INDEX idx_transactions_created_at ON transactions(created_at);
     ''');
+
+    await db.execute('''
+      CREATE TABLE customer_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    for (final name in defaultCustomerCategoryNames) {
+      await db.insert('customer_categories', {
+        'name': name,
+        'is_default': 1,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    }
 
     // Data dimulai dari awal benar-benar kosong (tanpa dummy)
   }
@@ -196,9 +257,32 @@ class DatabaseService {
       _cachedMenuItems.addAll(menuMaps.map((m) => MenuItemModel.fromMap(m)));
 
       try {
+        await _database!.execute("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'selesai'");
+      } catch (_) {}
+      try {
+        await _database!.execute("ALTER TABLE transactions ADD COLUMN customer_phone TEXT");
+      } catch (_) {}
+
+      try {
         final trxMaps = await _database!.query('transactions', orderBy: 'created_at DESC');
         _cachedTransactions.clear();
         _cachedTransactions.addAll(trxMaps.map((m) => TransactionModel.fromMap(m)));
+      } catch (_) {}
+
+      try {
+        final catMaps = await _database!.query('customer_categories', orderBy: 'id ASC');
+        _cachedCustomerCategories.clear();
+        _cachedCustomerCategories.addAll(catMaps.map((m) => CustomerCategoryModel.fromMap(m)));
+        if (_cachedCustomerCategories.isEmpty) {
+          for (final name in defaultCustomerCategoryNames) {
+            final id = await _database!.insert('customer_categories', {
+              'name': name,
+              'is_default': 1,
+              'created_at': DateTime.now().toIso8601String(),
+            });
+            _cachedCustomerCategories.add(CustomerCategoryModel(id: id, name: name, isDefault: true));
+          }
+        }
       } catch (_) {}
     } catch (e) {
       debugPrint('Error populating cache from SQLite: $e');
@@ -217,6 +301,13 @@ class DatabaseService {
         _cachedSubCategories.clear();
         _cachedMenuItems.clear();
         _cachedTransactions.clear();
+        _cachedCustomerCategories.clear();
+        int autoId = 1;
+        for (final name in defaultCustomerCategoryNames) {
+          _cachedCustomerCategories.add(
+            CustomerCategoryModel(id: autoId++, name: name, isDefault: true),
+          );
+        }
         await _saveFallbackToPrefs();
         await prefs.setBool(_prefCleanResetKey, true);
         return;
@@ -225,6 +316,7 @@ class DatabaseService {
       final subJson = prefs.getString(_prefSubCatsKey);
       final menuJson = prefs.getString(_prefMenuItemsKey);
       final trxJson = prefs.getString(_prefTransactionsKey);
+      final catJson = prefs.getString(_prefCustomerCategoriesKey);
 
       if (subJson != null && menuJson != null) {
         final List<dynamic> subList = jsonDecode(subJson);
@@ -258,7 +350,28 @@ class DatabaseService {
         _cachedTransactions.clear();
       }
 
-      if (subJson == null || menuJson == null) {
+      if (catJson != null) {
+        try {
+          final List<dynamic> catList = jsonDecode(catJson);
+          _cachedCustomerCategories.clear();
+          _cachedCustomerCategories.addAll(
+            catList.map((m) => CustomerCategoryModel.fromMap(Map<String, dynamic>.from(m))),
+          );
+        } catch (_) {
+          _cachedCustomerCategories.clear();
+        }
+      }
+
+      if (_cachedCustomerCategories.isEmpty) {
+        int autoId = 1;
+        for (final name in defaultCustomerCategoryNames) {
+          _cachedCustomerCategories.add(
+            CustomerCategoryModel(id: autoId++, name: name, isDefault: true),
+          );
+        }
+      }
+
+      if (subJson == null || menuJson == null || catJson == null) {
         await _saveFallbackToPrefs();
       }
     } catch (e) {
@@ -266,6 +379,7 @@ class DatabaseService {
       _cachedSubCategories.clear();
       _cachedMenuItems.clear();
       _cachedTransactions.clear();
+      _cachedCustomerCategories.clear();
     }
   }
 
@@ -275,12 +389,22 @@ class DatabaseService {
       final subJson = jsonEncode(_cachedSubCategories.map((s) => s.toMap()).toList());
       final menuJson = jsonEncode(_cachedMenuItems.map((m) => m.toMap()).toList());
       final trxJson = jsonEncode(_cachedTransactions.map((t) => t.toMap()).toList());
+      final catJson = jsonEncode(_cachedCustomerCategories.map((c) => c.toMap()).toList());
       await prefs.setString(_prefSubCatsKey, subJson);
       await prefs.setString(_prefMenuItemsKey, menuJson);
       await prefs.setString(_prefTransactionsKey, trxJson);
+      await prefs.setString(_prefCustomerCategoriesKey, catJson);
     } catch (e) {
       debugPrint('Error saving to SharedPreferences: $e');
     }
+  }
+
+  Future<void> _saveCustomerCategoriesToFallback() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final catJson = jsonEncode(_cachedCustomerCategories.map((c) => c.toMap()).toList());
+      await prefs.setString(_prefCustomerCategoriesKey, catJson);
+    } catch (_) {}
   }
 
   // Mapping sinkronisasi gambar dummy ke asset lokal
@@ -742,6 +866,35 @@ class DatabaseService {
     return newId;
   }
 
+  Future<bool> updateTransaction(TransactionModel trx) async {
+    if (!_isInitialized) await initialize();
+    if (trx.id == null) return false;
+
+    final index = _cachedTransactions.indexWhere((t) => t.id == trx.id);
+    if (index != -1) {
+      _cachedTransactions[index] = trx;
+    } else {
+      _cachedTransactions.insert(0, trx);
+    }
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.update(
+          'transactions',
+          trx.toMap(),
+          where: 'id = ?',
+          whereArgs: [trx.id],
+        );
+      } catch (e) {
+        debugPrint('Error updating transaction: $e');
+      }
+    } else {
+      await _saveFallbackToPrefs();
+    }
+
+    return true;
+  }
+
   Future<bool> deleteTransaction(int id) async {
     if (!_isInitialized) await initialize();
 
@@ -769,6 +922,175 @@ class DatabaseService {
       } catch (_) {}
     } else {
       await _saveFallbackToPrefs();
+    }
+  }
+
+  // ==================== CUSTOMER CATEGORIES CRUD ====================
+
+  static const List<String> defaultCustomerCategoryNames = [
+    'Member',
+    'GoFood',
+    'GrabFood',
+    'Karyawan',
+  ];
+
+  List<CustomerCategoryModel> get cachedCustomerCategories =>
+      List.unmodifiable(_cachedCustomerCategories);
+
+  Future<List<CustomerCategoryModel>> getCustomerCategories() async {
+    if (!_isInitialized) await initialize();
+    return List.from(_cachedCustomerCategories);
+  }
+
+  Future<int> insertCustomerCategory(String name) async {
+    if (!_isInitialized) await initialize();
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return -1;
+
+    if (_cachedCustomerCategories.any((c) => c.name.toLowerCase() == trimmed.toLowerCase())) {
+      return -1;
+    }
+
+    int newId = DateTime.now().millisecondsSinceEpoch % 1000000;
+    if (_cachedCustomerCategories.isNotEmpty) {
+      final maxId = _cachedCustomerCategories.map((c) => c.id ?? 0).fold(0, (max, id) => id > max ? id : max);
+      newId = maxId + 1;
+    }
+
+    final newModel = CustomerCategoryModel(
+      id: newId,
+      name: trimmed,
+      isDefault: false,
+    );
+    _cachedCustomerCategories.add(newModel);
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.insert('customer_categories', newModel.toMap());
+      } catch (_) {}
+    } else {
+      unawaited(_saveCustomerCategoriesToFallback());
+    }
+
+    return newId;
+  }
+
+  Future<bool> updateCustomerCategory(int id, String newName) async {
+    if (!_isInitialized) await initialize();
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return false;
+
+    final index = _cachedCustomerCategories.indexWhere((c) => c.id == id);
+    if (index == -1) return false;
+
+    final oldName = _cachedCustomerCategories[index].name;
+    final updatedModel = _cachedCustomerCategories[index].copyWith(name: trimmed);
+    _cachedCustomerCategories[index] = updatedModel;
+
+    // Update custom price keys on cached menu items if category was renamed
+    if (oldName != trimmed) {
+      for (int i = 0; i < _cachedMenuItems.length; i++) {
+        final item = _cachedMenuItems[i];
+        if (item.customerPrices.containsKey(oldName)) {
+          final newMap = Map<String, double>.from(item.customerPrices);
+          final priceVal = newMap.remove(oldName);
+          if (priceVal != null) {
+            newMap[trimmed] = priceVal;
+          }
+          _cachedMenuItems[i] = item.copyWith(customerPrices: newMap);
+          if (!_useFallbackStorage && _database != null) {
+            _database!.update(
+              'menu_items',
+              {'customer_prices_json': jsonEncode(newMap)},
+              where: 'id = ?',
+              whereArgs: [item.id],
+            );
+          }
+        }
+      }
+      if (_useFallbackStorage) {
+        unawaited(_saveFallbackToPrefs());
+      }
+    }
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.update(
+          'customer_categories',
+          updatedModel.toMap(),
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } catch (_) {}
+    } else {
+      unawaited(_saveCustomerCategoriesToFallback());
+    }
+
+    return true;
+  }
+
+  Future<bool> deleteCustomerCategory(int id) async {
+    if (!_isInitialized) await initialize();
+    final index = _cachedCustomerCategories.indexWhere((c) => c.id == id);
+    if (index == -1) return false;
+
+    final removed = _cachedCustomerCategories.removeAt(index);
+
+    // Remove price entries for this category in cached menu items
+    for (int i = 0; i < _cachedMenuItems.length; i++) {
+      final item = _cachedMenuItems[i];
+      if (item.customerPrices.containsKey(removed.name)) {
+        final newMap = Map<String, double>.from(item.customerPrices);
+        newMap.remove(removed.name);
+        _cachedMenuItems[i] = item.copyWith(customerPrices: newMap);
+        if (!_useFallbackStorage && _database != null) {
+          _database!.update(
+            'menu_items',
+            {'customer_prices_json': jsonEncode(newMap)},
+            where: 'id = ?',
+            whereArgs: [item.id],
+          );
+        }
+      }
+    }
+    if (_useFallbackStorage) {
+      unawaited(_saveFallbackToPrefs());
+    }
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.delete(
+          'customer_categories',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } catch (_) {}
+    } else {
+      unawaited(_saveCustomerCategoriesToFallback());
+    }
+
+    return true;
+  }
+
+  Future<void> resetCustomerCategoriesToDefault() async {
+    if (!_isInitialized) await initialize();
+    _cachedCustomerCategories.clear();
+    int autoId = 1;
+    for (final name in defaultCustomerCategoryNames) {
+      _cachedCustomerCategories.add(
+        CustomerCategoryModel(id: autoId++, name: name, isDefault: true),
+      );
+    }
+
+    if (!_useFallbackStorage && _database != null) {
+      try {
+        await _database!.delete('customer_categories');
+        for (final cat in _cachedCustomerCategories) {
+          await _database!.insert('customer_categories', cat.toMap());
+        }
+      } catch (_) {}
+    } else {
+      await _saveCustomerCategoriesToFallback();
     }
   }
 

@@ -48,6 +48,9 @@ class TransactionItemModel {
 }
 
 class TransactionModel {
+  static const String statusSelesai = 'selesai';
+  static const String statusBelumSelesai = 'belum_selesai';
+
   final int? id;
   final String invoiceNumber;
   final DateTime createdAt;
@@ -55,18 +58,29 @@ class TransactionModel {
   final String paymentMethod;
   final double cashGiven;
   final double change;
+  final String? customerCategory;
+  final String? customerPhone;
   final List<TransactionItemModel> items;
+  final String status;
 
   TransactionModel({
     this.id,
-    required this.invoiceNumber,
+    required String invoiceNumber,
     required this.createdAt,
     required this.totalAmount,
     required this.paymentMethod,
     required this.cashGiven,
     required this.change,
+    this.customerCategory,
+    this.customerPhone,
     required this.items,
-  });
+    this.status = statusSelesai,
+  }) : invoiceNumber = invoiceNumber.startsWith('TRX-')
+            ? invoiceNumber.replaceFirst('TRX-', 'NLA-')
+            : invoiceNumber;
+
+  bool get isCompleted => status == statusSelesai;
+  bool get isPending => status == statusBelumSelesai;
 
   int get totalItemsCount => items.fold(0, (sum, i) => sum + i.quantity);
 
@@ -79,7 +93,10 @@ class TransactionModel {
       'payment_method': paymentMethod,
       'cash_given': cashGiven,
       'change': change,
+      'customer_category': customerCategory,
+      'customer_phone': customerPhone,
       'items_json': jsonEncode(items.map((i) => i.toMap()).toList()),
+      'status': status,
     };
   }
 
@@ -96,17 +113,25 @@ class TransactionModel {
       } catch (_) {}
     }
 
+    final rawInvoice = map['invoice_number'] as String? ?? '';
+    final formattedInvoice = rawInvoice.startsWith('TRX-')
+        ? rawInvoice.replaceFirst('TRX-', 'NLA-')
+        : rawInvoice;
+
     return TransactionModel(
       id: map['id'] as int?,
-      invoiceNumber: map['invoice_number'] as String? ?? '',
+      invoiceNumber: formattedInvoice,
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'] as String) ?? DateTime.now()
           : DateTime.now(),
       totalAmount: (map['total_amount'] as num?)?.toDouble() ?? 0.0,
-      paymentMethod: map['payment_method'] as String? ?? 'Tunai',
+      paymentMethod: map['payment_method'] as String? ?? 'Cash',
       cashGiven: (map['cash_given'] as num?)?.toDouble() ?? 0.0,
       change: (map['change'] as num?)?.toDouble() ?? 0.0,
+      customerCategory: map['customer_category'] as String?,
+      customerPhone: map['customer_phone'] as String?,
       items: parsedItems,
+      status: map['status'] as String? ?? TransactionModel.statusSelesai,
     );
   }
 
@@ -118,7 +143,10 @@ class TransactionModel {
     String? paymentMethod,
     double? cashGiven,
     double? change,
+    String? customerCategory,
+    String? customerPhone,
     List<TransactionItemModel>? items,
+    String? status,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -128,7 +156,12 @@ class TransactionModel {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       cashGiven: cashGiven ?? this.cashGiven,
       change: change ?? this.change,
+      customerCategory: customerCategory ?? this.customerCategory,
+      customerPhone: customerPhone ?? this.customerPhone,
       items: items ?? this.items,
+      status: status ?? this.status,
     );
   }
 }
+
+

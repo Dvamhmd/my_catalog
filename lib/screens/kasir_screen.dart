@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/category_type.dart';
+import '../models/customer_category_model.dart';
 import '../models/layout_mode.dart';
 import '../models/menu_item_model.dart';
 import '../models/sub_category_model.dart';
@@ -36,7 +37,9 @@ enum PaymentMethod {
 
 
 class KasirScreen extends StatefulWidget {
-  const KasirScreen({super.key});
+  final TransactionModel? resumeTransaction;
+
+  const KasirScreen({super.key, this.resumeTransaction});
 
   @override
   State<KasirScreen> createState() => _KasirScreenState();
@@ -68,6 +71,7 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   final Map<int, int> _cart = {};
   // Registry info menu untuk item-item keranjang secara global lintas kategori/tab
   final Map<int, MenuItemModel> _cartItemDetails = {};
+  int? _resumedTransactionId;
 
   // GlobalKey for cart target bounce and fly animation
   final GlobalKey _cartTargetKey = GlobalKey();
@@ -84,6 +88,15 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     PreferenceService.saveLastActiveMenu(AppDrawerMenu.kasir);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChange);
+
+    if (widget.resumeTransaction != null) {
+      _resumedTransactionId = widget.resumeTransaction!.id;
+      for (final item in widget.resumeTransaction!.items) {
+        if (item.menuId != null) {
+          _cart[item.menuId!] = item.quantity;
+        }
+      }
+    }
 
     _cartBounceController = AnimationController(
       vsync: this,
@@ -376,7 +389,79 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   }
 
   void _clearCart() {
+    setState(() {
+      _cart.clear();
+      _resumedTransactionId = null;
+    });
+  }
+
+  Future<TransactionModel?> _savePendingTransaction({
+    String customerCategory = 'Member',
+    String? customerPhone,
+  }) async {
+    if (_cart.isEmpty) return null;
+
+    final allItems = await _db.getAllMenuItems();
+    final List<TransactionItemModel> transactionItems = [];
+    double total = 0;
+
+    for (final entry in _cart.entries) {
+      MenuItemModel? item = _findItemById(entry.key);
+      if (item == null) {
+        final matches = allItems.where((m) => m.id == entry.key);
+        if (matches.isNotEmpty) item = matches.first;
+      }
+      if (item != null) {
+        final unitPrice = item.getPriceForCategory(customerCategory);
+        final itemTotal = unitPrice * entry.value;
+        total += itemTotal;
+        transactionItems.add(TransactionItemModel(
+          menuId: item.id,
+          name: item.name,
+          price: unitPrice,
+          quantity: entry.value,
+          totalPrice: itemTotal,
+          imagePath: item.imagePath,
+          categoryType: item.type,
+        ));
+      }
+    }
+
+    if (transactionItems.isEmpty) return null;
+
+    final now = DateTime.now();
+    final invoiceNum = 'NLA-${now.millisecondsSinceEpoch.toString().substring(5)}';
+
+    final pendingTrx = TransactionModel(
+      id: _resumedTransactionId,
+      invoiceNumber: invoiceNum,
+      createdAt: now,
+      totalAmount: total,
+      paymentMethod: 'Belum Dibayar',
+      cashGiven: 0.0,
+      change: 0.0,
+      customerCategory: customerCategory,
+      customerPhone: customerPhone,
+      items: transactionItems,
+      status: TransactionModel.statusBelumSelesai,
+    );
+
+    int savedId;
+    if (_resumedTransactionId != null) {
+      await _db.updateTransaction(pendingTrx);
+      savedId = _resumedTransactionId!;
+    } else {
+      savedId = await _db.saveTransaction(pendingTrx);
+    }
+
+    _resumedTransactionId = null;
     setState(() => _cart.clear());
+
+    if (mounted) {
+      PendingSavedPopup.show(context);
+    }
+
+    return pendingTrx.copyWith(id: savedId);
   }
 
   void _showToast(String msg) {
@@ -560,10 +645,17 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
             }
           });
         },
-        onCheckoutSuccess: (orderItems, method, cashGiven, change) {
+        onCheckoutSuccess: (orderItems, method, cashGiven, change, customerCategory, [customerPhone]) async {
+          if (_resumedTransactionId != null) {
+            await _db.deleteTransaction(_resumedTransactionId!);
+            _resumedTransactionId = null;
+          }
           _clearCart();
           _loadMenuItems();
-          _showReceiptDialog(orderItems, method, cashGiven, change);
+          _showReceiptDialog(orderItems, method, cashGiven, change, customerCategory, customerPhone);
+        },
+        onSavePending: (customerCategory, [customerPhone]) {
+          _savePendingTransaction(customerCategory: customerCategory, customerPhone: customerPhone);
         },
       ),
     );
@@ -574,7 +666,9 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     PaymentMethod method,
     double cashGiven,
     double change,
-  ) {
+    String customerCategory, [
+    String? customerPhone,
+  ]) {
     final now = DateTime.now();
     final formattedTime =
         '${now.day}/${now.month}/${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -708,6 +802,64 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                   ),
                 ],
               ),
+              if (customerCategory.isNotEmpty && customerCategory != 'Reguler') ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Kategori Pelanggan',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.softPinkBackground,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFFFD1DC)),
+                      ),
+                      child: Text(
+                        customerCategory,
+                        style: const TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryPinkDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (customerPhone != null && customerPhone.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'No. Telepon',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                    Text(
+                      customerPhone,
+                      style: const TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (method == PaymentMethod.cash) ...[
                 const SizedBox(height: 4),
                 Row(
@@ -788,8 +940,8 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     final isViewingCategoryList = isCategoryViewMode && _currentSelectedSubCategory == null && !isSearching;
 
     return PopScope(
-      canPop: !isViewingInsideCategory && !_isSearchOpen,
-      onPopInvokedWithResult: (didPop, result) {
+      canPop: !isViewingInsideCategory && !_isSearchOpen && _cart.isEmpty,
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isSearchOpen) {
           setState(() {
@@ -801,13 +953,82 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
         }
         if (isViewingInsideCategory) {
           _selectSubCategory(null);
+          return;
+        }
+        if (_cart.isNotEmpty) {
+          final shouldSave = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Pesanan Belum Selesai'),
+              content: const Text(
+                'Simpan pesanan yang belum selesai ke Riwayat Transaksi agar dapat dilanjutkan nanti?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Abaikan / Hapus'),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE65100),
+                  ),
+                  icon: const Icon(Icons.bookmark_added_rounded, size: 16),
+                  label: const Text('Simpan ke Riwayat'),
+                  onPressed: () => Navigator.pop(ctx, true),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldSave == true) {
+            await _savePendingTransaction();
+            if (context.mounted) Navigator.of(context).pop();
+          } else if (shouldSave == false) {
+            _clearCart();
+            if (context.mounted) Navigator.of(context).pop();
+          }
         }
       },
       child: Scaffold(
         backgroundColor: AppTheme.backgroundLight,
         drawer: AppDrawer(
           activeMenu: AppDrawerMenu.kasir,
-          onSelectMenu: (menu) {
+          onSelectMenu: (menu) async {
+            if (_cart.isNotEmpty && menu != AppDrawerMenu.kasir) {
+              final shouldSave = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Pesanan Belum Selesai'),
+                  content: Text(
+                    'Terdapat $_totalItemsInCart menu di keranjang kasir. Simpan ke Riwayat Transaksi sebelum berpindah menu?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Hapus / Abaikan'),
+                    ),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE65100),
+                      ),
+                      icon: const Icon(Icons.bookmark_added_rounded, size: 16),
+                      label: const Text('Simpan ke Riwayat'),
+                      onPressed: () => Navigator.pop(ctx, true),
+                    ),
+                  ],
+                ),
+              );
+
+              if (shouldSave == true) {
+                await _savePendingTransaction();
+              } else if (shouldSave == false) {
+                _clearCart();
+              } else {
+                return; // User canceled dialog
+              }
+            }
+
+            if (!context.mounted) return;
             PreferenceService.saveLastActiveMenu(menu);
             if (menu == AppDrawerMenu.admin) {
               Navigator.of(context).pushReplacement(
@@ -1689,7 +1910,10 @@ class _CheckoutModal extends StatefulWidget {
     PaymentMethod method,
     double cashGiven,
     double change,
+    String customerCategory,
+    String? customerPhone,
   ) onCheckoutSuccess;
+  final Function(String customerCategory, [String? customerPhone]) onSavePending;
 
   const _CheckoutModal({
     required this.cart,
@@ -1697,6 +1921,7 @@ class _CheckoutModal extends StatefulWidget {
     this.itemResolver,
     required this.onUpdateQty,
     required this.onCheckoutSuccess,
+    required this.onSavePending,
   });
 
   @override
@@ -1707,19 +1932,118 @@ class _CheckoutModalState extends State<_CheckoutModal> {
   late Map<int, int> _localCart;
   PaymentMethod _selectedMethod = PaymentMethod.cash;
   late TextEditingController _cashInputController;
+  final TextEditingController _phoneController = TextEditingController();
+  bool _phoneHasError = false;
   bool _isProcessing = false;
   bool _hasCashError = false;
+
+  bool get _isMemberOrKaryawan {
+    final lower = _selectedCustomerCategory.toLowerCase();
+    return lower.contains('member') ||
+        lower.contains('karyawan') ||
+        lower.contains('vip') ||
+        lower.contains('staff') ||
+        lower.contains('pegawai');
+  }
+
+  bool get _isOnlineDelivery {
+    final lower = _selectedCustomerCategory.toLowerCase();
+    return lower.contains('gofood') ||
+        lower.contains('grab') ||
+        lower.contains('shopee');
+  }
+
+  void _handleClose(BuildContext context) {
+    if (_localCart.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tutup Rincian Pesanan?'),
+        content: const Text(
+          'Pesanan ini belum selesai. Anda dapat menyimpannya ke Riwayat Transaksi agar dapat dilanjutkan nanti, atau tetap menyimpannya di keranjang kasir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            child: const Text('Tetap di Keranjang'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE65100),
+            ),
+            icon: const Icon(Icons.bookmark_added_rounded, size: 16),
+            label: const Text('Simpan ke Riwayat'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+              widget.onSavePending(
+                _selectedCustomerCategory,
+                _isMemberOrKaryawan ? _phoneController.text.trim() : null,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _selectedCustomerCategory = 'Member';
+  List<CustomerCategoryModel> _customerCategories = [];
+
+  List<String> get _displayCategoryNames {
+    final list = _customerCategories
+        .where((c) => c.name.toLowerCase() != 'reguler')
+        .map((c) => c.name)
+        .toList();
+    if (list.isEmpty) {
+      return const ['Member', 'Karyawan', 'GoFood', 'GrabFood'];
+    }
+    const desiredOrder = ['member', 'karyawan', 'gofood', 'grabfood'];
+    list.sort((a, b) {
+      final aIdx = desiredOrder.indexWhere((o) => a.toLowerCase().contains(o));
+      final bIdx = desiredOrder.indexWhere((o) => b.toLowerCase().contains(o));
+      final aPos = aIdx == -1 ? 99 : aIdx;
+      final bPos = bIdx == -1 ? 99 : bIdx;
+      return aPos.compareTo(bPos);
+    });
+    return list;
+  }
 
   @override
   void initState() {
     super.initState();
     _localCart = Map.from(widget.cart);
     _cashInputController = TextEditingController();
+    _customerCategories = List.from(DatabaseService.instance.cachedCustomerCategories);
+    if (_displayCategoryNames.isNotEmpty && !_displayCategoryNames.contains(_selectedCustomerCategory)) {
+      _selectedCustomerCategory = _displayCategoryNames.first;
+    }
+    _loadCustomerCategoriesAsync();
+  }
+
+  Future<void> _loadCustomerCategoriesAsync() async {
+    final list = await DatabaseService.instance.getCustomerCategories();
+    if (mounted) {
+      setState(() {
+        _customerCategories = list;
+        if (_displayCategoryNames.isNotEmpty && !_displayCategoryNames.contains(_selectedCustomerCategory)) {
+          _selectedCustomerCategory = _displayCategoryNames.first;
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _cashInputController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -1737,7 +2061,10 @@ class _CheckoutModalState extends State<_CheckoutModal> {
     double total = 0;
     for (final entry in _localCart.entries) {
       final item = _findItem(entry.key);
-      if (item != null) total += item.price * entry.value;
+      if (item != null) {
+        final unitPrice = item.getPriceForCategory(_selectedCustomerCategory);
+        total += unitPrice * entry.value;
+      }
     }
     return total;
   }
@@ -1778,6 +2105,21 @@ class _CheckoutModalState extends State<_CheckoutModal> {
       }
     }
 
+    if (_isMemberOrKaryawan) {
+      final phone = _phoneController.text.trim();
+      if (phone.isEmpty) {
+        setState(() => _phoneHasError = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Nomor telepon wajib diisi untuk kategori $_selectedCustomerCategory.'),
+            backgroundColor: AppTheme.dangerRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isProcessing = true);
 
     try {
@@ -1800,18 +2142,19 @@ class _CheckoutModalState extends State<_CheckoutModal> {
       for (final entry in _localCart.entries) {
         final item = _findItem(entry.key);
         if (item != null) {
+          final unitPrice = item.getPriceForCategory(_selectedCustomerCategory);
           orderSummary.add(_OrderItemSummary(
             id: item.id!,
             name: item.name,
-            price: item.price,
+            price: unitPrice,
             qty: entry.value,
           ));
           transactionItems.add(TransactionItemModel(
             menuId: item.id,
             name: item.name,
-            price: item.price,
+            price: unitPrice,
             quantity: entry.value,
-            totalPrice: item.price * entry.value,
+            totalPrice: unitPrice * entry.value,
             imagePath: item.imagePath,
             categoryType: item.type,
           ));
@@ -1820,15 +2163,18 @@ class _CheckoutModalState extends State<_CheckoutModal> {
 
       // Simpan ke riwayat transaksi database
       final now = DateTime.now();
-      final invoiceNum = 'TRX-${now.millisecondsSinceEpoch.toString().substring(5)}';
+      final invoiceNum = 'NLA-${now.millisecondsSinceEpoch.toString().substring(5)}';
       final actualCashGiven = _selectedMethod == PaymentMethod.cash ? _cashGiven : total;
       final actualChange = _selectedMethod == PaymentMethod.cash ? _changeAmount : 0.0;
+      final savedPhone = _isMemberOrKaryawan ? _phoneController.text.trim() : null;
 
       final transactionRecord = TransactionModel(
         invoiceNumber: invoiceNum,
         createdAt: now,
         totalAmount: total,
         paymentMethod: _selectedMethod.title,
+        customerCategory: _selectedCustomerCategory,
+        customerPhone: savedPhone,
         cashGiven: actualCashGiven,
         change: actualChange,
         items: transactionItems,
@@ -1843,6 +2189,8 @@ class _CheckoutModalState extends State<_CheckoutModal> {
           _selectedMethod,
           actualCashGiven,
           actualChange,
+          _selectedCustomerCategory,
+          savedPhone,
         );
       }
     } catch (e) {
@@ -1886,10 +2234,15 @@ class _CheckoutModalState extends State<_CheckoutModal> {
 
             // Header
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(10, 4, 18, 6),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppTheme.textDark),
+                    tooltip: 'Tutup / Simpan',
+                    onPressed: () => _handleClose(context),
+                  ),
+                  const SizedBox(width: 4),
                   const Text(
                     'Rincian Pesanan',
                     style: TextStyle(
@@ -1899,6 +2252,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                       color: AppTheme.textDark,
                     ),
                   ),
+                  const Spacer(),
                   Text(
                     '${_localCart.values.fold(0, (sum, q) => sum + q)} item dipilih',
                     style: const TextStyle(
@@ -1912,6 +2266,61 @@ class _CheckoutModalState extends State<_CheckoutModal> {
               ),
             ),
             const Divider(height: 1, color: Color(0xFFFFEBF0)),
+
+            // Customer Category Selector
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Kategori Pelanggan',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      if (_selectedCustomerCategory != 'Reguler')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Harga Kategori Aktif',
+                            style: TextStyle(
+                              fontFamily: AppTheme.fontFamily,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2E7D32),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _displayCategoryNames
+                          .map((name) => _buildCategoryChip(name))
+                          .toList(),
+                    ),
+                  ),
+                  if (_isMemberOrKaryawan || _isOnlineDelivery) ...[
+                    const SizedBox(height: 10),
+                    _buildPhoneInputField(),
+                  ],
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFF7F3F5)),
 
             // Cart Items List
             Flexible(
@@ -1936,6 +2345,10 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                         final qty = _localCart[itemId]!;
                         final item = _findItem(itemId);
                         if (item == null) return const SizedBox.shrink();
+
+                        final unitPrice = item.getPriceForCategory(_selectedCustomerCategory);
+                        final hasCustomPrice = _selectedCustomerCategory != 'Reguler' &&
+                            item.hasCustomPriceForCategory(_selectedCustomerCategory);
 
                         return Row(
                           children: [
@@ -1972,7 +2385,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                     runSpacing: 2,
                                     children: [
                                       Text(
-                                        Formatters.currency(item.price),
+                                        Formatters.currency(unitPrice),
                                         style: const TextStyle(
                                           fontFamily: AppTheme.fontFamily,
                                           fontSize: 11.5,
@@ -1980,6 +2393,23 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                           color: AppTheme.textMedium,
                                         ),
                                       ),
+                                      if (hasCustomPrice)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE8F5E9),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            _selectedCustomerCategory,
+                                            style: const TextStyle(
+                                              fontFamily: AppTheme.fontFamily,
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF2E7D32),
+                                            ),
+                                          ),
+                                        ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                         decoration: BoxDecoration(
@@ -1988,7 +2418,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                           border: Border.all(color: const Color(0xFFFFD1DC), width: 0.8),
                                         ),
                                         child: Text(
-                                          'Total: ${Formatters.currency(item.price * qty)}',
+                                          'Total: ${Formatters.currency(unitPrice * qty)}',
                                           style: const TextStyle(
                                             fontFamily: AppTheme.fontFamily,
                                             fontSize: 11.5,
@@ -2294,6 +2724,37 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: const Color(0xFFFFF8E1),
+                      ),
+                      icon: const Icon(Icons.pending_actions_rounded, size: 17, color: Color(0xFFE65100)),
+                      label: const Text(
+                        'Simpan Transaksi Belum Selesai',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFE65100),
+                        ),
+                      ),
+                      onPressed: _localCart.isEmpty || _isProcessing
+                          ? null
+                          : () {
+                              Navigator.pop(context);
+                              widget.onSavePending(
+                                _selectedCustomerCategory,
+                                _isMemberOrKaryawan ? _phoneController.text.trim() : null,
+                              );
+                            },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -2302,6 +2763,180 @@ class _CheckoutModalState extends State<_CheckoutModal> {
       ),
     );
   }
+
+  Widget _buildCategoryChip(String name) {
+    final isSelected = _selectedCustomerCategory == name;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedCustomerCategory = name;
+            _phoneHasError = false;
+          });
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryPink : AppTheme.softPinkBackground.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? AppTheme.primaryPink : const Color(0xFFFFD1DC),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            name,
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              color: isSelected ? Colors.white : AppTheme.textDark,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhoneInputField() {
+    final isRequired = _isMemberOrKaryawan;
+    final isDisabled = _isOnlineDelivery;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDisabled ? const Color(0xFFF7F7F9) : const Color(0xFFFFF9FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _phoneHasError
+              ? AppTheme.dangerRed
+              : (isDisabled ? const Color(0xFFE5E5EA) : const Color(0xFFFFD1DC)),
+          width: _phoneHasError ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isDisabled ? Icons.phone_disabled_rounded : Icons.phone_android_rounded,
+                    size: 14,
+                    color: isDisabled ? AppTheme.textLight : AppTheme.primaryPink,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Nomor Telepon Pelanggan',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: isDisabled ? AppTheme.textMedium : AppTheme.textDark,
+                    ),
+                  ),
+                  if (isRequired)
+                    const Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: isDisabled
+                      ? const Color(0xFFEEEEEE)
+                      : const Color(0xFFFFEBEE),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  isDisabled ? 'Dinonaktifkan ($_selectedCustomerCategory)' : 'Wajib Diisi',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: isDisabled ? AppTheme.textLight : AppTheme.dangerRed,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 38,
+            child: TextField(
+              controller: _phoneController,
+              enabled: !isDisabled,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDisabled ? AppTheme.textLight : AppTheme.textDark,
+              ),
+              onChanged: (_) {
+                if (_phoneHasError) {
+                  setState(() => _phoneHasError = false);
+                }
+              },
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: isDisabled ? const Color(0xFFEEEEF2) : Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                hintText: isDisabled
+                    ? 'Tidak perlu nomor telepon untuk pesanan $_selectedCustomerCategory'
+                    : 'Contoh: 081234567890',
+                hintStyle: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 11.5,
+                  color: isDisabled ? AppTheme.textLight : AppTheme.textMedium.withValues(alpha: 0.6),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: _phoneHasError ? AppTheme.dangerRed : const Color(0xFFE0E0E0),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: _phoneHasError ? AppTheme.dangerRed : const Color(0xFFE0E0E0),
+                  ),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppTheme.primaryPink, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+          if (_phoneHasError) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Nomor telepon wajib diisi untuk kategori $_selectedCustomerCategory',
+              style: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 10.5,
+                color: AppTheme.dangerRed,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+
 }
 
 /// Pop up notifikasi batas stok yang tampil mengambang di bagian atas layar
@@ -2328,6 +2963,7 @@ class StockLimitPopup {
 
     dismiss();
     CashWarningPopup.dismiss();
+    PendingSavedPopup.dismiss();
 
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
@@ -2548,6 +3184,7 @@ class CashWarningPopup {
 
     StockLimitPopup.dismiss();
     dismiss();
+    PendingSavedPopup.dismiss();
 
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
@@ -2741,4 +3378,248 @@ class _CashWarningPopupWidgetState extends State<_CashWarningPopupWidget>
     );
   }
 }
+
+/// Pop up notifikasi penyimpanan pesanan belum selesai ke riwayat transaksi yang tampil mengambang di bagian atas layar
+/// menggunakan root overlay dengan layout persis seperti StockLimitPopup.
+class PendingSavedPopup {
+  static OverlayEntry? _activeEntry;
+  static Timer? _dismissTimer;
+
+  static void dismiss() {
+    _dismissTimer?.cancel();
+    try {
+      _activeEntry?.remove();
+    } catch (_) {}
+    _activeEntry = null;
+  }
+
+  static void show(
+    BuildContext context, {
+    String title = 'Pesanan Disimpan ke Riwayat',
+    String message = 'Pesanan belum selesai berhasil disimpan ke Riwayat Transaksi.',
+  }) {
+    HapticFeedback.mediumImpact();
+
+    dismiss();
+    StockLimitPopup.dismiss();
+    CashWarningPopup.dismiss();
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => _PendingSavedPopupWidget(
+        title: title,
+        message: message,
+        onDismiss: () {
+          _dismissTimer?.cancel();
+          try {
+            entry.remove();
+          } catch (_) {}
+          if (_activeEntry == entry) _activeEntry = null;
+        },
+      ),
+    );
+
+    _activeEntry = entry;
+    overlay.insert(entry);
+
+    _dismissTimer = Timer(const Duration(milliseconds: 3200), () {
+      try {
+        entry.remove();
+      } catch (_) {}
+      if (_activeEntry == entry) _activeEntry = null;
+    });
+  }
+}
+
+class _PendingSavedPopupWidget extends StatefulWidget {
+  final String title;
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _PendingSavedPopupWidget({
+    required this.title,
+    required this.message,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_PendingSavedPopupWidget> createState() => _PendingSavedPopupWidgetState();
+}
+
+class _PendingSavedPopupWidgetState extends State<_PendingSavedPopupWidget>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.6),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutBack,
+    ));
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOut,
+    );
+
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _dismiss() async {
+    if (!mounted) return;
+    await _animController.reverse();
+    widget.onDismiss();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: Material(
+                color: Colors.transparent,
+                child: GestureDetector(
+                  onTap: _dismiss,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFFFCC80), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.14),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                        BoxShadow(
+                          color: const Color(0xFFE65100).withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE65100),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.bookmark_added_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.title,
+                                style: const TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFBF360C),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.message,
+                                style: const TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.textDark,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            _dismiss();
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE65100),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Lihat',
+                              style: TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: _dismiss,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: 16,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 

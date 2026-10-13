@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../dialogs/manage_customer_categories_dialog.dart';
 import '../services/dummy_data_service.dart';
 import '../theme/app_theme.dart';
 
@@ -140,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
 
-            // Card Container for Settings Items
+            // Card Container for Settings Items (Data Dummy)
             Container(
               decoration: BoxDecoration(
                 color: AppTheme.surfaceWhite,
@@ -209,6 +210,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: _handleToggleDummy,
                       ),
                   ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Section Header: Pelanggan & Harga
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Text(
+                'PELANGGAN & HARGA',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textLight.withValues(alpha: 0.85),
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+
+            // Card Container for Customer Categories
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceWhite,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFF0F0F5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => ManageCustomerCategoriesDialog(
+                        onCategoriesChanged: () {
+                          _hasChanged = true;
+                          widget.onDataChanged?.call();
+                        },
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppTheme.softPinkBackground,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.badge_outlined,
+                            size: 20,
+                            color: AppTheme.primaryPink,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Kategori Pelanggan',
+                                style: TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textDark,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Kelola Member, GoFood, GrabFood, Karyawan',
+                                style: TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 12,
+                                  color: AppTheme.textMedium,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
+                          color: AppTheme.textLight,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

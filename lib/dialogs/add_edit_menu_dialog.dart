@@ -4,8 +4,10 @@ import 'package:image_picker/image_picker.dart';
 
 import 'image_cropper_dialog.dart';
 import '../models/category_type.dart';
+import '../models/customer_category_model.dart';
 import '../models/menu_item_model.dart';
 import '../models/sub_category_model.dart';
+import '../services/database_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/custom_image_view.dart';
@@ -41,6 +43,10 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
 
   final ImagePicker _picker = ImagePicker();
 
+  List<CustomerCategoryModel> _customerCategories = [];
+  final Map<String, TextEditingController> _customerPriceControllers = {};
+  bool _isCustomerPricesExpanded = false;
+  bool _isProcessingImage = false;
 
   @override
   void initState() {
@@ -49,7 +55,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
 
     _nameController = TextEditingController(text: edit?.name ?? '');
     _priceController = TextEditingController(
-      text: edit != null ? edit.price.toInt().toString() : '',
+      text: edit != null ? Formatters.formatNumber(edit.price.toInt()) : '',
     );
     _stockController = TextEditingController(
       text: edit != null ? edit.stock.toString() : '20',
@@ -57,6 +63,11 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
     _descriptionController = TextEditingController(text: edit?.description ?? '');
     _imagePath = edit?.imagePath;
     _isAvailable = edit?.isAvailable ?? true;
+
+    // Initialize customer categories and prices
+    _customerCategories = List.from(DatabaseService.instance.cachedCustomerCategories);
+    _initCustomerPriceControllers();
+    _loadCustomerCategoriesAsync();
 
     // Determine initial selected sub category
     if (edit != null) {
@@ -76,22 +87,51 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
     }
   }
 
+  void _initCustomerPriceControllers() {
+    final existingPrices = widget.itemToEdit?.customerPrices ?? {};
+    for (final cat in _customerCategories) {
+      if (!_customerPriceControllers.containsKey(cat.name)) {
+        final customPrice = existingPrices[cat.name];
+        _customerPriceControllers[cat.name] = TextEditingController(
+          text: customPrice != null ? Formatters.formatNumber(customPrice.toInt()) : '',
+        );
+      }
+    }
+    if (existingPrices.isNotEmpty) {
+      _isCustomerPricesExpanded = true;
+    }
+  }
+
+  Future<void> _loadCustomerCategoriesAsync() async {
+    final cats = await DatabaseService.instance.getCustomerCategories();
+    if (mounted) {
+      setState(() {
+        _customerCategories = cats;
+        _initCustomerPriceControllers();
+      });
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
     _stockController.dispose();
     _descriptionController.dispose();
+    for (final c in _customerPriceControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    setState(() => _isProcessingImage = true);
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 90,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 88,
       );
       if (pickedFile != null && mounted) {
         final cropped = await ImageCropperDialog.cropImage(
@@ -113,6 +153,10 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
             backgroundColor: AppTheme.dangerRed,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingImage = false);
       }
     }
   }
@@ -246,10 +290,20 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
 
     final stock = int.tryParse(_stockController.text.trim()) ?? 0;
 
+    // Collect custom customer category prices
+    final customerPrices = <String, double>{};
+    for (final entry in _customerPriceControllers.entries) {
+      final parsed = Formatters.parseCurrencyInput(entry.value.text);
+      if (parsed != null && parsed > 0) {
+        customerPrices[entry.key] = parsed;
+      }
+    }
+
     final menuItem = MenuItemModel(
       id: widget.itemToEdit?.id,
       name: _nameController.text.trim(),
       price: price,
+      customerPrices: customerPrices,
       imagePath: _imagePath,
       subCategoryId: _selectedSubCategory!.id!,
       subCategoryName: _selectedSubCategory!.name,
@@ -436,6 +490,25 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                                   ),
                                 ),
                               ),
+                              if (_isProcessingImage)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.4),
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 28,
+                                        height: 28,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.8,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -510,197 +583,422 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Nama Menu (Wajib)
-                      const Row(
-                        children: [
-                          Text(
-                            'Nama Menu',
-                            style: TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textDark,
-                            ),
-                          ),
-                          Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _nameController,
-                        textCapitalization: TextCapitalization.words,
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'masukkan nama menu',
-                          prefixIcon: Icon(
-                            widget.activeType == CategoryType.drink
-                                ? Icons.local_drink_rounded
-                                : Icons.restaurant_menu_rounded,
-                            color: AppTheme.primaryPinkLight,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Nama menu wajib diisi';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Harga (Wajib)
-                      const Row(
-                        children: [
-                          Text(
-                            'Harga Menu',
-                            style: TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textDark,
-                            ),
-                          ),
-                          Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _priceController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primaryPinkDark,
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: '25000',
-                          prefixText: 'Rp ',
-                          prefixStyle: TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryPink,
-                          ),
-                          prefixIcon: Icon(Icons.payments_outlined, color: AppTheme.primaryPinkLight),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Harga menu wajib diisi';
-                          }
-                          final parsed = double.tryParse(value);
-                          if (parsed == null || parsed <= 0) {
-                            return 'Harga harus berupa angka valid';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Stok Menu
+                      // Nama Menu & Harga Menu (Sejajar dalam 1 Baris)
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
-                            children: [
-                              Text(
-                                'Stok Menu',
-                                style: TextStyle(
+                          // Nama Menu (Wajib)
+                          Expanded(
+                            flex: 6,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Text(
+                                      'Nama Menu',
+                                      style: TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textDark,
+                                      ),
+                                    ),
+                                    Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: _nameController,
+                                  textCapitalization: TextCapitalization.words,
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'masukkan nama menu',
+                                    prefixIcon: Icon(
+                                      widget.activeType == CategoryType.drink
+                                          ? Icons.local_drink_rounded
+                                          : Icons.restaurant_menu_rounded,
+                                      color: AppTheme.primaryPinkLight,
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Nama menu wajib diisi';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Harga (Wajib)
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Text(
+                                      'Harga Menu',
+                                      style: TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textDark,
+                                      ),
+                                    ),
+                                    Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: _priceController,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [CurrencyInputFormatter()],
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primaryPinkDark,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    hintText: '25.000',
+                                    prefixText: 'Rp ',
+                                    prefixStyle: TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.primaryPink,
+                                    ),
+                                    prefixIcon: Icon(Icons.payments_outlined, color: AppTheme.primaryPinkLight),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Harga menu wajib diisi';
+                                    }
+                                    final parsed = Formatters.parseCurrencyInput(value);
+                                    if (parsed == null || parsed <= 0) {
+                                      return 'Harga harus berupa angka valid';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Harga Khusus Kategori Pelanggan (Opsional)
+                      _buildCustomerPricesSection(),
+                      const SizedBox(height: 16),
+
+                      // Stok Menu & Status Ketersediaan (Sejajar pada mode Edit Menu)
+                      if (isEditing) ...[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Stok Menu (Kiri)
+                            Expanded(
+                              flex: 6,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Text(
+                                        'Stok Menu',
+                                        style: TextStyle(
+                                          fontFamily: AppTheme.fontFamily,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                      Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 38,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.softPinkBackground,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: const Color(0xFFFFE0E6)),
+                                        ),
+                                        child: IconButton(
+                                          padding: EdgeInsets.zero,
+                                          icon: const Icon(Icons.remove_rounded, color: AppTheme.primaryPinkDark, size: 20),
+                                          onPressed: () {
+                                            final current = int.tryParse(_stockController.text) ?? 0;
+                                            if (current > 0) {
+                                              _stockController.text = (current - 1).toString();
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 44,
+                                          child: TextFormField(
+                                            controller: _stockController,
+                                            keyboardType: TextInputType.number,
+                                            textAlign: TextAlign.center,
+                                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                            style: const TextStyle(
+                                              fontFamily: AppTheme.fontFamily,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppTheme.textDark,
+                                            ),
+                                            decoration: const InputDecoration(
+                                              hintText: '0',
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                                            ),
+                                            validator: (value) {
+                                              if (value == null || value.trim().isEmpty) {
+                                                return 'Stok wajib diisi';
+                                              }
+                                              final parsed = int.tryParse(value);
+                                              if (parsed == null || parsed < 0) {
+                                                return 'Angka valid';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        width: 38,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.softPinkBackground,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: const Color(0xFFFFE0E6)),
+                                        ),
+                                        child: IconButton(
+                                          padding: EdgeInsets.zero,
+                                          icon: const Icon(Icons.add_rounded, color: AppTheme.primaryPinkDark, size: 20),
+                                          onPressed: () {
+                                            final current = int.tryParse(_stockController.text) ?? 0;
+                                            _stockController.text = (current + 1).toString();
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      _buildQuickStockChip(5),
+                                      const SizedBox(width: 6),
+                                      _buildQuickStockChip(10),
+                                      const SizedBox(width: 6),
+                                      _buildQuickStockChip(20),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Menu Tersedia Toggle (Kanan)
+                            Expanded(
+                              flex: 5,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Status Menu',
+                                    style: TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    height: 44,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    decoration: BoxDecoration(
+                                      color: _isAvailable
+                                          ? const Color(0xFFE8F5E9)
+                                          : AppTheme.softPinkBackground.withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: _isAvailable ? const Color(0xFFC8E6C9) : const Color(0xFFFFE0E6),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                _isAvailable ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                                color: _isAvailable ? AppTheme.successGreen : AppTheme.textLight,
+                                                size: 18,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  _isAvailable ? 'Tersedia' : 'Habis',
+                                                  style: TextStyle(
+                                                    fontFamily: AppTheme.fontFamily,
+                                                    fontSize: 12.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: _isAvailable ? AppTheme.textDark : AppTheme.textMedium,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Transform.scale(
+                                          scale: 0.8,
+                                          child: Switch.adaptive(
+                                            value: _isAvailable,
+                                            activeTrackColor: AppTheme.primaryPink,
+                                            onChanged: (val) {
+                                              setState(() {
+                                                _isAvailable = val;
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _isAvailable ? 'Dapat dipesan pelanggan' : 'Disembunyikan / tidak aktif',
+                                    style: const TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 10.5,
+                                      color: AppTheme.textLight,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        // Tambah Menu Baru: Stok Menu (Tampilan full-width)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
+                              children: [
+                                Text(
+                                  'Stok Menu',
+                                  style: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textDark,
+                                  ),
+                                ),
+                                Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                _buildQuickStockChip(5),
+                                const SizedBox(width: 6),
+                                _buildQuickStockChip(10),
+                                const SizedBox(width: 6),
+                                _buildQuickStockChip(20),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.softPinkBackground,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFFFE0E6)),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.remove_rounded, color: AppTheme.primaryPinkDark, size: 20),
+                                onPressed: () {
+                                  final current = int.tryParse(_stockController.text) ?? 0;
+                                  if (current > 0) {
+                                    _stockController.text = (current - 1).toString();
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _stockController,
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                style: const TextStyle(
                                   fontFamily: AppTheme.fontFamily,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
                                   color: AppTheme.textDark,
                                 ),
-                              ),
-                              Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              _buildQuickStockChip(5),
-                              const SizedBox(width: 6),
-                              _buildQuickStockChip(10),
-                              const SizedBox(width: 6),
-                              _buildQuickStockChip(20),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.softPinkBackground,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFFFE0E6)),
-                            ),
-                            child: IconButton(
-                              icon: const Icon(Icons.remove_rounded, color: AppTheme.primaryPinkDark, size: 20),
-                              onPressed: () {
-                                final current = int.tryParse(_stockController.text) ?? 0;
-                                if (current > 0) {
-                                  _stockController.text = (current - 1).toString();
-                                }
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _stockController,
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.center,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              style: const TextStyle(
-                                fontFamily: AppTheme.fontFamily,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textDark,
-                              ),
-                              decoration: const InputDecoration(
-                                hintText: '0',
-                                suffixText: 'porsi',
-                                suffixStyle: TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  fontSize: 12,
-                                  color: AppTheme.textMedium,
+                                decoration: const InputDecoration(
+                                  hintText: '0',
+                                  suffixText: 'porsi',
+                                  suffixStyle: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 12,
+                                    color: AppTheme.textMedium,
+                                  ),
                                 ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Stok wajib diisi';
+                                  }
+                                  final parsed = int.tryParse(value);
+                                  if (parsed == null || parsed < 0) {
+                                    return 'Stok harus berupa angka';
+                                  }
+                                  return null;
+                                },
                               ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Stok wajib diisi';
-                                }
-                                final parsed = int.tryParse(value);
-                                if (parsed == null || parsed < 0) {
-                                  return 'Stok harus berupa angka';
-                                }
-                                return null;
-                              },
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.softPinkBackground,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFFFE0E6)),
+                            const SizedBox(width: 8),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.softPinkBackground,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFFFE0E6)),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.add_rounded, color: AppTheme.primaryPinkDark, size: 20),
+                                onPressed: () {
+                                  final current = int.tryParse(_stockController.text) ?? 0;
+                                  _stockController.text = (current + 1).toString();
+                                },
+                              ),
                             ),
-                            child: IconButton(
-                              icon: const Icon(Icons.add_rounded, color: AppTheme.primaryPinkDark, size: 20),
-                              onPressed: () {
-                                final current = int.tryParse(_stockController.text) ?? 0;
-                                _stockController.text = (current + 1).toString();
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // Deskripsi (Opsional)
@@ -726,68 +1024,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                           prefixIcon: Icon(Icons.notes_rounded, color: AppTheme.primaryPinkLight),
                         ),
                       ),
-                      const SizedBox(height: 16),
-
-                      // Status Ketersediaan Switch (Hanya tampil saat Edit Menu agar saat tambah menu baru lebih compact)
-                      if (isEditing) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.softPinkBackground.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFFFE0E6)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    _isAvailable ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                                    color: _isAvailable ? AppTheme.successGreen : AppTheme.textLight,
-                                    size: 22,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _isAvailable ? 'Menu Tersedia' : 'Menu Habis',
-                                        style: TextStyle(
-                                          fontFamily: AppTheme.fontFamily,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _isAvailable ? AppTheme.textDark : AppTheme.textMedium,
-                                        ),
-                                      ),
-                                      Text(
-                                        _isAvailable ? 'Dapat dipesan pelanggan' : 'Disembunyikan / tidak aktif',
-                                        style: const TextStyle(
-                                          fontFamily: AppTheme.fontFamily,
-                                          fontSize: 11,
-                                          color: AppTheme.textLight,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              Switch.adaptive(
-                                value: _isAvailable,
-                                activeTrackColor: AppTheme.primaryPink,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _isAvailable = val;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                      ] else ...[
-                        const SizedBox(height: 8),
-                      ],
+                      const SizedBox(height: 20),
 
                       // Action Buttons
                       Row(
@@ -873,6 +1110,289 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
           ),
         ),
       ),
+    );
+  }
+
+  IconData _getCategoryIcon(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('member') || lower.contains('vip')) {
+      return Icons.card_membership_rounded;
+    }
+    if (lower.contains('gofood') ||
+        lower.contains('grab') ||
+        lower.contains('shopee') ||
+        lower.contains('food')) {
+      return Icons.delivery_dining_rounded;
+    }
+    if (lower.contains('karyawan') ||
+        lower.contains('staff') ||
+        lower.contains('pegawai')) {
+      return Icons.badge_outlined;
+    }
+    return Icons.people_outline_rounded;
+  }
+
+  Color _getCategoryColor(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('gofood')) return const Color(0xFF00AA13);
+    if (lower.contains('grab')) return const Color(0xFF00B14F);
+    if (lower.contains('member') || lower.contains('vip')) return AppTheme.primaryPink;
+    if (lower.contains('karyawan')) return const Color(0xFF1976D2);
+    return AppTheme.primaryPinkDark;
+  }
+
+  Widget _buildCustomerPricesSection() {
+    if (_customerCategories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final customCount = _customerPriceControllers.values.where((c) {
+      final val = Formatters.parseCurrencyInput(c.text);
+      return val != null && val > 0;
+    }).length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFD),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEBE8ED), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              setState(() {
+                _isCustomerPricesExpanded = !_isCustomerPricesExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: AppTheme.softPinkBackground,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.loyalty_outlined,
+                      size: 17,
+                      color: AppTheme.primaryPink,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Harga Khusus Kategori',
+                              style: TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                            if (customCount > 0) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryPink,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$customCount aktif',
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 1),
+                        const Text(
+                          'Member, GoFood, GrabFood, Karyawan, dll',
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 11,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _isCustomerPricesExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: AppTheme.textLight,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isCustomerPricesExpanded) ...[
+            const Divider(height: 1, color: Color(0xFFEBE8ED)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Kosongkan kolom bila harga sama dengan harga normal menu.',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 11,
+                      color: AppTheme.textLight,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // 2-Column layout: category name above input box, aligned and balanced
+                  Builder(
+                    builder: (context) {
+                      final List<List<CustomerCategoryModel>> pairs = [];
+                      for (int i = 0; i < _customerCategories.length; i += 2) {
+                        pairs.add([
+                          _customerCategories[i],
+                          if (i + 1 < _customerCategories.length) _customerCategories[i + 1],
+                        ]);
+                      }
+
+                      return Column(
+                        children: pairs.map((pair) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: _buildCategoryPriceField(pair[0]),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: pair.length > 1
+                                      ? _buildCategoryPriceField(pair[1])
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryPriceField(CustomerCategoryModel cat) {
+    final controller = _customerPriceControllers.putIfAbsent(
+      cat.name,
+      () => TextEditingController(),
+    );
+    final catColor = _getCategoryColor(cat.name);
+    final catIcon = _getCategoryIcon(cat.name);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Category Name with icon
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: catColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(catIcon, size: 12.5, color: catColor),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                cat.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        // Price Input Field directly beneath
+        SizedBox(
+          height: 38,
+          child: TextFormField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            inputFormatters: [CurrencyInputFormatter()],
+            style: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.primaryPinkDark,
+            ),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+              hintText: 'Sama normal',
+              hintStyle: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 11,
+                color: AppTheme.textLight,
+                fontWeight: FontWeight.normal,
+              ),
+              prefixText: 'Rp ',
+              prefixStyle: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.primaryPink,
+              ),
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E0E6)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E0E6)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: AppTheme.primaryPink, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

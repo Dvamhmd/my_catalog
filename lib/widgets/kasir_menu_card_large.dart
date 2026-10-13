@@ -25,12 +25,12 @@ class KasirMenuCardLarge extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.surfaceWhite,
+        color: isOutOfStock ? const Color(0xFFE2E3E7) : AppTheme.surfaceWhite,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
               ? AppTheme.primaryPink
-              : (isOutOfStock ? const Color(0xFFE5E5E5) : const Color(0xFFFFE0E6)),
+              : (isOutOfStock ? const Color(0xFFCBCDD3) : const Color(0xFFFFE0E6)),
           width: isSelected ? 2.0 : 1.2,
         ),
         boxShadow: [

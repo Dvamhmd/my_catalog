@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'category_type.dart';
 
 class MenuItemModel {
@@ -11,6 +12,7 @@ class MenuItemModel {
   final int stock;
   final String? description;
   final bool isAvailable;
+  final Map<String, double> customerPrices;
   final DateTime createdAt;
 
   MenuItemModel({
@@ -24,8 +26,35 @@ class MenuItemModel {
     this.stock = 0,
     this.description,
     this.isAvailable = true,
+    Map<String, double>? customerPrices,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  })  : customerPrices = customerPrices ?? const {},
+        createdAt = createdAt ?? DateTime.now();
+
+  double getPriceForCategory(String? categoryName) {
+    if (categoryName == null ||
+        categoryName.trim().isEmpty ||
+        categoryName.toLowerCase() == 'reguler' ||
+        categoryName.toLowerCase() == 'umum') {
+      return price;
+    }
+    final customPrice = customerPrices[categoryName];
+    if (customPrice != null && customPrice > 0) {
+      return customPrice;
+    }
+    return price;
+  }
+
+  bool hasCustomPriceForCategory(String? categoryName) {
+    if (categoryName == null ||
+        categoryName.trim().isEmpty ||
+        categoryName.toLowerCase() == 'reguler' ||
+        categoryName.toLowerCase() == 'umum') {
+      return false;
+    }
+    final customPrice = customerPrices[categoryName];
+    return customPrice != null && customPrice > 0;
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -39,11 +68,24 @@ class MenuItemModel {
       'stock': stock,
       'description': description,
       'is_available': isAvailable ? 1 : 0,
+      'customer_prices_json': jsonEncode(customerPrices),
       'created_at': createdAt.toIso8601String(),
     };
   }
 
   factory MenuItemModel.fromMap(Map<String, dynamic> map) {
+    Map<String, double> parsedCustomerPrices = {};
+    if (map['customer_prices_json'] != null) {
+      try {
+        final decoded = jsonDecode(map['customer_prices_json'] as String);
+        if (decoded is Map) {
+          parsedCustomerPrices = decoded.map(
+            (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
+          );
+        }
+      } catch (_) {}
+    }
+
     return MenuItemModel(
       id: map['id'] as int?,
       name: map['name'] as String,
@@ -55,6 +97,7 @@ class MenuItemModel {
       stock: (map['stock'] as num?)?.toInt() ?? 0,
       description: map['description'] as String?,
       isAvailable: (map['is_available'] as int? ?? 1) == 1,
+      customerPrices: parsedCustomerPrices,
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -72,6 +115,7 @@ class MenuItemModel {
     int? stock,
     String? description,
     bool? isAvailable,
+    Map<String, double>? customerPrices,
     DateTime? createdAt,
   }) {
     return MenuItemModel(
@@ -85,6 +129,7 @@ class MenuItemModel {
       stock: stock ?? this.stock,
       description: description ?? this.description,
       isAvailable: isAvailable ?? this.isAvailable,
+      customerPrices: customerPrices ?? this.customerPrices,
       createdAt: createdAt ?? this.createdAt,
     );
   }

@@ -26,7 +26,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
   bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
-  String _selectedDateFilter = 'Semua'; // 'Semua', 'Hari Ini', '7 Hari Terakhir'
+  String _selectedStatusFilter = 'Semua'; // 'Semua', 'Selesai', 'Belum Selesai'
 
   @override
   void initState() {
@@ -60,26 +60,20 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
   void _applyFilter() {
     final query = _searchController.text.trim().toLowerCase();
-    final now = DateTime.now();
 
     List<TransactionModel> result = _allTransactions.where((t) {
-      // 1. Date Filter
-      if (_selectedDateFilter == 'Hari Ini') {
-        final isSameDay = t.createdAt.year == now.year &&
-            t.createdAt.month == now.month &&
-            t.createdAt.day == now.day;
-        if (!isSameDay) return false;
-      } else if (_selectedDateFilter == '7 Hari Terakhir') {
-        final diff = now.difference(t.createdAt).inDays;
-        if (diff > 7) return false;
-      }
+      // 1. Status Filter
+      if (_selectedStatusFilter == 'Selesai' && !t.isCompleted) return false;
+      if (_selectedStatusFilter == 'Belum Selesai' && !t.isPending) return false;
 
-      // 2. Search Query (invoice number, payment method, or item name)
+      // 2. Search Query (invoice number, payment method, customer category, item name, or status)
       if (query.isNotEmpty) {
         final matchInvoice = t.invoiceNumber.toLowerCase().contains(query);
         final matchMethod = t.paymentMethod.toLowerCase().contains(query);
         final matchItem = t.items.any((i) => i.name.toLowerCase().contains(query));
-        return matchInvoice || matchMethod || matchItem;
+        final matchCat = t.customerCategory?.toLowerCase().contains(query) ?? false;
+        final matchStatus = (t.isCompleted ? 'selesai' : 'belum selesai').contains(query);
+        return matchInvoice || matchMethod || matchItem || matchCat || matchStatus;
       }
 
       return true;
@@ -90,11 +84,16 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     });
   }
 
-  double get _totalRevenue =>
-      _filteredTransactions.fold(0.0, (sum, t) => sum + t.totalAmount);
+  int get _completedCount => _allTransactions.where((t) => t.isCompleted).length;
+  int get _pendingCount => _allTransactions.where((t) => t.isPending).length;
 
-  int get _totalItemsSold =>
-      _filteredTransactions.fold(0, (sum, t) => sum + t.totalItemsCount);
+  double get _totalRevenue => _filteredTransactions
+      .where((t) => t.isCompleted)
+      .fold(0.0, (sum, t) => sum + t.totalAmount);
+
+  int get _totalItemsSold => _filteredTransactions
+      .where((t) => t.isCompleted)
+      .fold(0, (sum, t) => sum + t.totalItemsCount);
 
   void _showTransactionDetail(TransactionModel trx) {
     showDialog(
@@ -102,6 +101,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       builder: (ctx) => _ReceiptDetailDialog(
         transaction: trx,
         onDeleted: () {
+          _loadTransactions();
+        },
+        onUpdated: () {
           _loadTransactions();
         },
       ),
@@ -154,13 +156,14 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     ),
                   ),
 
-                  // Filter Pills (Semua, Hari Ini, 7 Hari Terakhir)
+                  // Status Filter Bar (Semua, Selesai, Belum Selesai)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(horizontalPad, 4, horizontalPad, 10),
-                      child: _buildDateFilterBar(),
+                      padding: EdgeInsets.fromLTRB(horizontalPad, 4, horizontalPad, 8),
+                      child: _buildStatusFilterBar(),
                     ),
                   ),
+
 
                   // Transactions List or Empty State
                   if (_filteredTransactions.isEmpty)
@@ -349,10 +352,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 Expanded(
                   child: Row(
                     children: [
-                      const Icon(Icons.receipt_rounded, color: Colors.white70, size: 15),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.check_circle_outline_rounded, color: Colors.white70, size: 15),
+                      const SizedBox(width: 5),
                       Text(
-                        'Total: ${_filteredTransactions.length} Struk',
+                        'Selesai: ${_filteredTransactions.where((t) => t.isCompleted).length}',
                         style: const TextStyle(
                           fontFamily: AppTheme.fontFamily,
                           color: Colors.white,
@@ -364,14 +367,14 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                   ),
                 ),
                 Container(width: 1, height: 16, color: Colors.white24),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Row(
                     children: [
                       const Icon(Icons.restaurant_menu_rounded, color: Colors.white70, size: 15),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 5),
                       Text(
-                        'Terjual: $_totalItemsSold Porsi',
+                        'Terjual: $_totalItemsSold',
                         style: const TextStyle(
                           fontFamily: AppTheme.fontFamily,
                           color: Colors.white,
@@ -382,6 +385,27 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     ],
                   ),
                 ),
+                if (_filteredTransactions.any((t) => t.isPending)) ...[
+                  Container(width: 1, height: 16, color: Colors.white24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.pending_actions_rounded, color: Color(0xFFFFE082), size: 15),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Pending: ${_filteredTransactions.where((t) => t.isPending).length}',
+                          style: const TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            color: Color(0xFFFFE082),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -390,40 +414,68 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     );
   }
 
-  // ==================== DATE FILTER PILLS ====================
+  // ==================== STATUS FILTER BAR ====================
 
-  Widget _buildDateFilterBar() {
-    final filters = ['Semua', 'Hari Ini', '7 Hari Terakhir'];
+  Widget _buildStatusFilterBar() {
+    final filters = [
+      {'title': 'Semua', 'count': _allTransactions.length},
+      {'title': 'Selesai', 'count': _completedCount},
+      {'title': 'Belum Selesai', 'count': _pendingCount},
+    ];
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: filters.map((f) {
-          final isSel = _selectedDateFilter == f;
+          final title = f['title'] as String;
+          final count = f['count'] as int;
+          final isSel = _selectedStatusFilter == title;
+          final isPendingChip = title == 'Belum Selesai';
+
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilterChip(
-              label: Text(
-                f,
-                style: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 12,
-                  fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
-                  color: isSel ? Colors.white : AppTheme.textMedium,
-                ),
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isPendingChip) ...[
+                    Icon(
+                      Icons.pending_actions_rounded,
+                      size: 14,
+                      color: isSel ? Colors.white : (count > 0 ? const Color(0xFFE65100) : AppTheme.textMedium),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    isPendingChip ? '$title ($count)' : title,
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 12,
+                      fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+                      color: isSel
+                          ? Colors.white
+                          : (isPendingChip && count > 0 ? const Color(0xFFE65100) : AppTheme.textMedium),
+                    ),
+                  ),
+                ],
               ),
               selected: isSel,
               showCheckmark: false,
-              backgroundColor: Colors.white,
-              selectedColor: AppTheme.primaryPink,
+              backgroundColor: isPendingChip && count > 0 && !isSel
+                  ? const Color(0xFFFFF3E0)
+                  : Colors.white,
+              selectedColor: isPendingChip ? const Color(0xFFE65100) : AppTheme.primaryPink,
               side: BorderSide(
-                color: isSel ? AppTheme.primaryPink : const Color(0xFFE8E5E7),
+                color: isSel
+                    ? (isPendingChip ? const Color(0xFFE65100) : AppTheme.primaryPink)
+                    : (isPendingChip && count > 0 ? const Color(0xFFFFB74D) : const Color(0xFFE8E5E7)),
                 width: 1,
               ),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               onSelected: (_) {
                 setState(() {
-                  _selectedDateFilter = f;
+                  _selectedStatusFilter = title;
                   _applyFilter();
                 });
               },
@@ -433,6 +485,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       ),
     );
   }
+
+
+
 
   // ==================== TRANSACTION CARD ====================
 
@@ -445,12 +500,17 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: trx.isPending ? const Color(0xFFFFFDF9) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFFE0E8), width: 0.9),
+        border: Border.all(
+          color: trx.isPending ? const Color(0xFFFFB74D) : const Color(0xFFFFE0E8),
+          width: trx.isPending ? 1.2 : 0.9,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: trx.isPending
+                ? const Color(0xFFE65100).withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -466,7 +526,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top row: Invoice No & Payment Method Pill
+                // Top row: Invoice No & Payment/Status Pill
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -475,13 +535,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                         Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: AppTheme.softPinkBackground,
+                            color: trx.isPending ? const Color(0xFFFFF3E0) : AppTheme.softPinkBackground,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(
-                            Icons.receipt_long_rounded,
+                          child: Icon(
+                            trx.isPending ? Icons.pending_actions_rounded : Icons.receipt_long_rounded,
                             size: 16,
-                            color: AppTheme.primaryPink,
+                            color: trx.isPending ? const Color(0xFFE65100) : AppTheme.primaryPink,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -496,33 +556,97 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                         ),
                       ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                      decoration: BoxDecoration(
-                        color: AppTheme.softPinkBackground,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFFFCCD8), width: 0.8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _getPaymentIcon(trx.paymentMethod),
-                            size: 13,
-                            color: AppTheme.primaryPinkDark,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            trx.paymentMethod,
-                            style: const TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primaryPinkDark,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (trx.customerCategory != null &&
+                            trx.customerCategory!.isNotEmpty &&
+                            trx.customerCategory != 'Reguler') ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFC8E6C9), width: 0.8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.badge_outlined, size: 12, color: Color(0xFF2E7D32)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  trx.customerCategory!,
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF2E7D32),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                          const SizedBox(width: 6),
                         ],
-                      ),
+                        if (trx.isPending)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3E0),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFFFB74D), width: 0.8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.hourglass_top_rounded,
+                                  size: 12,
+                                  color: Color(0xFFE65100),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Belum Selesai',
+                                  style: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFE65100),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.softPinkBackground,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFFFCCD8), width: 0.8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _getPaymentIcon(trx.paymentMethod),
+                                  size: 13,
+                                  color: AppTheme.primaryPinkDark,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  trx.paymentMethod,
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primaryPinkDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -567,19 +691,44 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                       children: [
                         Text(
                           Formatters.currency(trx.totalAmount),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: AppTheme.fontFamily,
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
-                            color: AppTheme.primaryPinkDark,
+                            color: trx.isPending ? const Color(0xFFE65100) : AppTheme.primaryPinkDark,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.arrow_forward_ios_rounded,
-                          size: 12,
-                          color: AppTheme.primaryPink,
-                        ),
+                        const SizedBox(width: 8),
+                        if (trx.isPending)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE65100),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Selesaikan',
+                                  style: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(width: 3),
+                                Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.white),
+                              ],
+                            ),
+                          )
+                        else
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 12,
+                            color: AppTheme.primaryPink,
+                          ),
                       ],
                     ),
                   ],
@@ -591,6 +740,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       ),
     );
   }
+
 
   IconData _getPaymentIcon(String method) {
     final lower = method.toLowerCase();
@@ -666,10 +816,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 class _ReceiptDetailDialog extends StatelessWidget {
   final TransactionModel transaction;
   final VoidCallback onDeleted;
+  final VoidCallback? onUpdated;
 
   const _ReceiptDetailDialog({
     required this.transaction,
     required this.onDeleted,
+    this.onUpdated,
   });
 
   @override
@@ -728,13 +880,64 @@ class _ReceiptDetailDialog extends StatelessWidget {
               ),
               const SizedBox(height: 14),
 
+              // Pending Warning Banner if transaction is uncompleted
+              if (transaction.isPending) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFFB74D), width: 1),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.hourglass_top_rounded, color: Color(0xFFE65100), size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'TRANSAKSI BELUM SELESAI',
+                              style: TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFE65100),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Transaksi ini tersimpan sementara saat kasir ditutup. Selesaikan pembayaran atau lanjutkan di kasir.',
+                              style: TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 11,
+                                color: Color(0xFFBF360C),
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               // Invoice No & Date
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppTheme.softPinkBackground.withValues(alpha: 0.5),
+                  color: transaction.isPending
+                      ? const Color(0xFFFFF8E1)
+                      : AppTheme.softPinkBackground.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFFFE0E8), width: 0.8),
+                  border: Border.all(
+                    color: transaction.isPending ? const Color(0xFFFFD54F) : const Color(0xFFFFE0E8),
+                    width: 0.8,
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -858,10 +1061,17 @@ class _ReceiptDetailDialog extends StatelessWidget {
 
               // Payment Details
               _buildDetailRow(
+                'Status Transaksi',
+                transaction.isPending ? 'Belum Selesai' : 'Selesai',
+                isBold: true,
+                valueColor: transaction.isPending ? const Color(0xFFE65100) : AppTheme.successGreen,
+              ),
+              const SizedBox(height: 6),
+              _buildDetailRow(
                 'Total Tagihan',
                 Formatters.currency(transaction.totalAmount),
                 isBold: true,
-                valueColor: AppTheme.primaryPinkDark,
+                valueColor: transaction.isPending ? const Color(0xFFE65100) : AppTheme.primaryPinkDark,
                 valueSize: 16,
               ),
               const SizedBox(height: 6),
@@ -869,8 +1079,28 @@ class _ReceiptDetailDialog extends StatelessWidget {
                 'Metode Pembayaran',
                 transaction.paymentMethod,
               ),
-              if (transaction.paymentMethod.toLowerCase().contains('tunai') ||
-                  transaction.paymentMethod.toLowerCase().contains('cash')) ...[
+              if (transaction.customerCategory != null &&
+                  transaction.customerCategory!.isNotEmpty &&
+                  transaction.customerCategory != 'Reguler') ...[
+                const SizedBox(height: 6),
+                _buildDetailRow(
+                  'Kategori Pelanggan',
+                  transaction.customerCategory!,
+                  valueColor: AppTheme.primaryPinkDark,
+                  isBold: true,
+                ),
+              ],
+              if (transaction.customerPhone != null &&
+                  transaction.customerPhone!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _buildDetailRow(
+                  'No. Telepon',
+                  transaction.customerPhone!,
+                ),
+              ],
+              if (transaction.isCompleted &&
+                  (transaction.paymentMethod.toLowerCase().contains('tunai') ||
+                      transaction.paymentMethod.toLowerCase().contains('cash'))) ...[
                 const SizedBox(height: 6),
                 _buildDetailRow(
                   'Uang Diterima',
@@ -886,32 +1116,110 @@ class _ReceiptDetailDialog extends StatelessWidget {
 
               const SizedBox(height: 18),
 
-              // Buttons (Tutup & Hapus)
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Hapus Transaksi',
-                    icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerRed, size: 20),
+              // Action Buttons
+              if (transaction.isPending) ...[
+                // For pending transaction: options to complete or continue in cashier
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE65100),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                    label: const Text(
+                      'Selesaikan Pembayaran Sekarang',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
                     onPressed: () {
-                      _confirmDelete(context);
+                      _showCompletePaymentDialog(context);
                     },
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Tutup Struk'),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryPinkDark,
+                      side: const BorderSide(color: AppTheme.primaryPink, width: 1.2),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
+                    icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                    label: const Text(
+                      'Buka & Lanjutkan di Kasir',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context); // Close receipt
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => KasirScreen(resumeTransaction: transaction),
+                        ),
+                      );
+                    },
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Hapus Transaksi',
+                      icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerRed, size: 20),
+                      onPressed: () => _confirmDelete(context),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Tutup', style: TextStyle(color: AppTheme.textMedium)),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                // For completed transaction: regular Close & Delete
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Hapus Transaksi',
+                      icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerRed, size: 20),
+                      onPressed: () {
+                        _confirmDelete(context);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Tutup Struk'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showCompletePaymentDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _CompletePaymentDialog(
+        transaction: transaction,
+        onSuccess: () {
+          Navigator.pop(context); // Close receipt detail dialog
+          onUpdated?.call();
+        },
       ),
     );
   }
@@ -973,3 +1281,431 @@ class _ReceiptDetailDialog extends StatelessWidget {
     );
   }
 }
+
+// ==================== COMPLETE PAYMENT DIALOG ====================
+
+class _CompletePaymentDialog extends StatefulWidget {
+  final TransactionModel transaction;
+  final VoidCallback onSuccess;
+
+  const _CompletePaymentDialog({
+    required this.transaction,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_CompletePaymentDialog> createState() => _CompletePaymentDialogState();
+}
+
+class _CompletePaymentDialogState extends State<_CompletePaymentDialog> {
+  String _selectedMethod = 'Tunai';
+  final TextEditingController _cashController = TextEditingController();
+  bool _isProcessing = false;
+  double _cashGiven = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _cashGiven = widget.transaction.totalAmount;
+    _cashController.text = Formatters.formatNumber(widget.transaction.totalAmount);
+  }
+
+  @override
+  void dispose() {
+    _cashController.dispose();
+    super.dispose();
+  }
+
+  double get _change => (_cashGiven - widget.transaction.totalAmount).clamp(0, double.infinity);
+  bool get _isCashValid => _selectedMethod != 'Tunai' || _cashGiven >= widget.transaction.totalAmount;
+
+  Future<void> _processPayment() async {
+    if (!_isCashValid || _isProcessing) return;
+
+    setState(() => _isProcessing = true);
+
+    try {
+      // 1. Deduct stock for the items
+      final Map<int, int> quantities = {};
+      for (final item in widget.transaction.items) {
+        if (item.menuId != null) {
+          quantities[item.menuId!] = item.quantity;
+        }
+      }
+      if (quantities.isNotEmpty) {
+        await DatabaseService.instance.checkoutOrder(quantities);
+      }
+
+      // 2. Update transaction status to selesai
+      final completedTrx = widget.transaction.copyWith(
+        status: TransactionModel.statusSelesai,
+        paymentMethod: _selectedMethod,
+        cashGiven: _selectedMethod == 'Tunai' ? _cashGiven : widget.transaction.totalAmount,
+        change: _selectedMethod == 'Tunai' ? _change : 0,
+      );
+
+      await DatabaseService.instance.updateTransaction(completedTrx);
+
+      if (mounted) {
+        Navigator.pop(context); // Close this dialog
+        widget.onSuccess();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Pembayaran ${widget.transaction.invoiceNumber} berhasil diselesaikan!'),
+            backgroundColor: AppTheme.successGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyelesaikan pembayaran: $e'),
+            backgroundColor: AppTheme.dangerRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.payment_rounded, color: Color(0xFFE65100), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Selesaikan Pembayaran',
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        Text(
+                          widget.transaction.invoiceNumber,
+                          style: const TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 12,
+                            color: AppTheme.textLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20, color: AppTheme.textLight),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Total Amount Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppTheme.softPinkBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFCCD8), width: 1),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Tagihan',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                    Text(
+                      Formatters.currency(widget.transaction.totalAmount),
+                      style: const TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: AppTheme.primaryPinkDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Payment Method Selection
+              const Text(
+                'Metode Pembayaran',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMethodChip('Tunai', Icons.payments_rounded),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildMethodChip('QRIS', Icons.qr_code_scanner_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Cash Inputs if Tunai
+              if (_selectedMethod == 'Tunai') ...[
+                const Text(
+                  'Uang Diterima',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _cashController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [CurrencyInputFormatter()],
+                  decoration: InputDecoration(
+                    prefixText: 'Rp ',
+                    prefixStyle: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.primaryPink, width: 1.5),
+                    ),
+                  ),
+                  onChanged: (val) {
+                    final parsed = Formatters.parseCurrencyInput(val) ?? 0;
+                    setState(() => _cashGiven = parsed);
+                  },
+                ),
+                const SizedBox(height: 10),
+
+                // Quick Cash Buttons
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _buildQuickCashPill(widget.transaction.totalAmount, 'Uang Pas'),
+                    _buildQuickCashPill(50000, '50.000'),
+                    _buildQuickCashPill(100000, '100.000'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Change Row
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9F9F9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFEEEEEE)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Kembalian',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                      Text(
+                        Formatters.currency(_change),
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: _cashGiven >= widget.transaction.totalAmount
+                              ? AppTheme.successGreen
+                              : AppTheme.dangerRed,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_cashGiven < widget.transaction.totalAmount) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Nominal uang kurang dari total tagihan',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 11,
+                      color: AppTheme.dangerRed,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+              ],
+
+              // Submit Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryPink,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isCashValid && !_isProcessing ? _processPayment : null,
+                  child: _isProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Konfirmasi Pembayaran Selesai',
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMethodChip(String label, IconData icon) {
+    final isSelected = _selectedMethod == label;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedMethod = label;
+          if (label == 'QRIS') {
+            _cashGiven = widget.transaction.totalAmount;
+          }
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.softPinkBackground : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryPink : const Color(0xFFE0E0E0),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? AppTheme.primaryPinkDark : AppTheme.textMedium,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 12.5,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? AppTheme.primaryPinkDark : AppTheme.textDark,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickCashPill(double amount, String label) {
+    return ActionChip(
+      label: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: AppTheme.fontFamily,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.textDark,
+        ),
+      ),
+      backgroundColor: const Color(0xFFF5F5F5),
+      side: const BorderSide(color: Color(0xFFE0E0E0), width: 0.8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      onPressed: () {
+        setState(() {
+          _cashGiven = amount;
+          _cashController.text = Formatters.formatNumber(amount);
+        });
+      },
+    );
+  }
+}
+

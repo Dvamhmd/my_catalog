@@ -20,11 +20,11 @@ class MenuCardLarge extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.surfaceWhite,
+        color: isOutOfStock ? const Color(0xFFE2E3E7) : AppTheme.surfaceWhite,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isOutOfStock
-              ? const Color(0xFFE5E5E5)
+              ? const Color(0xFFCBCDD3)
               : const Color(0xFFFFE0E6),
           width: 1.2,
         ),
