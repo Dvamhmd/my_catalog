@@ -588,36 +588,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           ),
                           const SizedBox(width: 6),
                         ],
-                        if (trx.isPending)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF3E0),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFFFB74D), width: 0.8),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.hourglass_top_rounded,
-                                  size: 12,
-                                  color: Color(0xFFE65100),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Belum Selesai',
-                                  style: TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFFE65100),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
+                        if (trx.paymentMethod.isNotEmpty && trx.paymentMethod != 'Belum Dibayar') ...[
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                             decoration: BoxDecoration(
@@ -646,6 +617,37 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                               ],
                             ),
                           ),
+                          const SizedBox(width: 6),
+                        ],
+                        if (trx.isPending)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3E0),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFFFB74D), width: 0.8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.hourglass_top_rounded,
+                                  size: 12,
+                                  color: Color(0xFFE65100),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Belum Selesai',
+                                  style: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFE65100),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ],
@@ -665,6 +667,24 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     height: 1.3,
                   ),
                 ),
+                if (trx.customerPhone != null && trx.customerPhone!.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      const Icon(Icons.phone_android_rounded, size: 12, color: AppTheme.textMedium),
+                      const SizedBox(width: 4),
+                      Text(
+                        trx.customerPhone!,
+                        style: const TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 const Divider(height: 1, color: Color(0xFFF7F3F5)),
                 const SizedBox(height: 10),
@@ -947,7 +967,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
                       style: const TextStyle(
                         fontFamily: AppTheme.fontFamily,
                         fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                         color: AppTheme.textDark,
                       ),
                     ),
@@ -975,7 +995,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
                       style: TextStyle(
                         fontFamily: AppTheme.fontFamily,
                         fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: AppTheme.textLight,
                         letterSpacing: 0.5,
                       ),
@@ -986,7 +1006,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: AppTheme.fontFamily,
                       fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: AppTheme.textLight,
                       letterSpacing: 0.5,
                     ),
@@ -1025,7 +1045,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
                               style: const TextStyle(
                                 fontFamily: AppTheme.fontFamily,
                                 fontSize: 13,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                                 color: AppTheme.textDark,
                               ),
                             ),
@@ -1046,7 +1066,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
                         style: const TextStyle(
                           fontFamily: AppTheme.fontFamily,
                           fontSize: 13,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                           color: AppTheme.textDark,
                         ),
                       ),
@@ -1061,13 +1081,6 @@ class _ReceiptDetailDialog extends StatelessWidget {
 
               // Payment Details
               _buildDetailRow(
-                'Status Transaksi',
-                transaction.isPending ? 'Belum Selesai' : 'Selesai',
-                isBold: true,
-                valueColor: transaction.isPending ? const Color(0xFFE65100) : AppTheme.successGreen,
-              ),
-              const SizedBox(height: 6),
-              _buildDetailRow(
                 'Total Tagihan',
                 Formatters.currency(transaction.totalAmount),
                 isBold: true,
@@ -1079,6 +1092,21 @@ class _ReceiptDetailDialog extends StatelessWidget {
                 'Metode Pembayaran',
                 transaction.paymentMethod,
               ),
+              if (transaction.cashGiven > 0) ...[
+                const SizedBox(height: 6),
+                _buildDetailRow(
+                  'Uang Tunai',
+                  Formatters.currency(transaction.cashGiven),
+                ),
+                if (transaction.change > 0 || transaction.isCompleted) ...[
+                  const SizedBox(height: 6),
+                  _buildDetailRow(
+                    'Kembalian',
+                    Formatters.currency(transaction.change),
+                    valueColor: AppTheme.successGreen,
+                  ),
+                ],
+              ],
               if (transaction.customerCategory != null &&
                   transaction.customerCategory!.isNotEmpty &&
                   transaction.customerCategory != 'Reguler') ...[
@@ -1087,7 +1115,6 @@ class _ReceiptDetailDialog extends StatelessWidget {
                   'Kategori Pelanggan',
                   transaction.customerCategory!,
                   valueColor: AppTheme.primaryPinkDark,
-                  isBold: true,
                 ),
               ],
               if (transaction.customerPhone != null &&
@@ -1098,19 +1125,12 @@ class _ReceiptDetailDialog extends StatelessWidget {
                   transaction.customerPhone!,
                 ),
               ],
-              if (transaction.isCompleted &&
-                  (transaction.paymentMethod.toLowerCase().contains('tunai') ||
-                      transaction.paymentMethod.toLowerCase().contains('cash'))) ...[
+              if (transaction.displayLoyaltyDiscount != null) ...[
                 const SizedBox(height: 6),
                 _buildDetailRow(
-                  'Uang Diterima',
-                  Formatters.currency(transaction.cashGiven),
-                ),
-                const SizedBox(height: 6),
-                _buildDetailRow(
-                  'Kembalian',
-                  Formatters.currency(transaction.change),
-                  valueColor: AppTheme.successGreen,
+                  'Diskon Loyalty',
+                  transaction.displayLoyaltyDiscount!,
+                  valueColor: const Color(0xFF2E7D32),
                 ),
               ],
 
@@ -1264,7 +1284,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
           style: TextStyle(
             fontFamily: AppTheme.fontFamily,
             fontSize: 12.5,
-            fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
             color: isBold ? AppTheme.textDark : AppTheme.textMedium,
           ),
         ),
@@ -1273,7 +1293,7 @@ class _ReceiptDetailDialog extends StatelessWidget {
           style: TextStyle(
             fontFamily: AppTheme.fontFamily,
             fontSize: valueSize,
-            fontWeight: isBold ? FontWeight.w800 : FontWeight.w700,
+            fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
             color: valueColor ?? AppTheme.textDark,
           ),
         ),
@@ -1306,8 +1326,14 @@ class _CompletePaymentDialogState extends State<_CompletePaymentDialog> {
   @override
   void initState() {
     super.initState();
-    _cashGiven = widget.transaction.totalAmount;
-    _cashController.text = Formatters.formatNumber(widget.transaction.totalAmount);
+    final initialMethod = widget.transaction.paymentMethod.toLowerCase().contains('qris') ? 'QRIS' : 'Tunai';
+    _selectedMethod = initialMethod;
+    if (widget.transaction.cashGiven > 0) {
+      _cashGiven = widget.transaction.cashGiven;
+    } else {
+      _cashGiven = widget.transaction.totalAmount;
+    }
+    _cashController.text = Formatters.formatNumber(_cashGiven);
   }
 
   @override

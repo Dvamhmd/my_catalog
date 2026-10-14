@@ -124,9 +124,16 @@ class DatabaseService {
           cash_given REAL NOT NULL,
           change REAL NOT NULL,
           customer_category TEXT,
-          items_json TEXT NOT NULL
+          customer_phone TEXT,
+          loyalty_discount TEXT,
+          items_json TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'selesai'
         );
       ''');
+    } catch (_) {}
+
+    try {
+      await db.execute('ALTER TABLE transactions ADD COLUMN loyalty_discount TEXT;');
     } catch (_) {}
 
     try {
@@ -194,6 +201,7 @@ class DatabaseService {
         change REAL NOT NULL,
         customer_category TEXT,
         customer_phone TEXT,
+        loyalty_discount TEXT,
         items_json TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'selesai'
       )

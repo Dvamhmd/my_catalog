@@ -799,16 +799,6 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      _buildQuickStockChip(5),
-                                      const SizedBox(width: 6),
-                                      _buildQuickStockChip(10),
-                                      const SizedBox(width: 6),
-                                      _buildQuickStockChip(20),
-                                    ],
-                                  ),
                                 ],
                               ),
                             ),
@@ -915,15 +905,6 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                                   ),
                                 ),
                                 Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                _buildQuickStockChip(5),
-                                const SizedBox(width: 6),
-                                _buildQuickStockChip(10),
-                                const SizedBox(width: 6),
-                                _buildQuickStockChip(20),
                               ],
                             ),
                           ],
@@ -1086,70 +1067,10 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
     );
   }
 
-  Widget _buildQuickStockChip(int value) {
-    return InkWell(
-      onTap: () {
-        final current = int.tryParse(_stockController.text) ?? 0;
-        _stockController.text = (current + value).toString();
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: AppTheme.softPinkBackground,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFFFD1DC)),
-        ),
-        child: Text(
-          '+$value',
-          style: const TextStyle(
-            fontFamily: AppTheme.fontFamily,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.primaryPinkDark,
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData _getCategoryIcon(String name) {
-    final lower = name.toLowerCase();
-    if (lower.contains('member') || lower.contains('vip')) {
-      return Icons.card_membership_rounded;
-    }
-    if (lower.contains('gofood') ||
-        lower.contains('grab') ||
-        lower.contains('shopee') ||
-        lower.contains('food')) {
-      return Icons.delivery_dining_rounded;
-    }
-    if (lower.contains('karyawan') ||
-        lower.contains('staff') ||
-        lower.contains('pegawai')) {
-      return Icons.badge_outlined;
-    }
-    return Icons.people_outline_rounded;
-  }
-
-  Color _getCategoryColor(String name) {
-    final lower = name.toLowerCase();
-    if (lower.contains('gofood')) return const Color(0xFF00AA13);
-    if (lower.contains('grab')) return const Color(0xFF00B14F);
-    if (lower.contains('member') || lower.contains('vip')) return AppTheme.primaryPink;
-    if (lower.contains('karyawan')) return const Color(0xFF1976D2);
-    return AppTheme.primaryPinkDark;
-  }
-
   Widget _buildCustomerPricesSection() {
     if (_customerCategories.isEmpty) {
       return const SizedBox.shrink();
     }
-
-    final customCount = _customerPriceControllers.values.where((c) {
-      final val = Formatters.parseCurrencyInput(c.text);
-      return val != null && val > 0;
-    }).length;
 
     return Container(
       decoration: BoxDecoration(
@@ -1168,136 +1089,131 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
               });
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               child: Row(
                 children: [
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 26,
+                    height: 26,
                     decoration: BoxDecoration(
                       color: AppTheme.softPinkBackground,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Icon(
                       Icons.loyalty_outlined,
-                      size: 17,
+                      size: 15,
                       color: AppTheme.primaryPink,
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Harga Khusus Kategori',
-                              style: TextStyle(
-                                fontFamily: AppTheme.fontFamily,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textDark,
-                              ),
-                            ),
-                            if (customCount > 0) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryPink,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '$customCount aktif',
-                                  style: const TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 1),
-                        const Text(
-                          'Member, GoFood, GrabFood, Karyawan, dll',
-                          style: TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontSize: 11,
-                            color: AppTheme.textMedium,
-                          ),
-                        ),
-                      ],
+                  const Expanded(
+                    child: Text(
+                      'Harga Khusus Kategori',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
                     ),
                   ),
-                  Icon(
-                    _isCustomerPricesExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: AppTheme.textLight,
+                  AnimatedRotation(
+                    turns: _isCustomerPricesExpanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOutCubic,
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: AppTheme.textLight,
+                      size: 20,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          if (_isCustomerPricesExpanded) ...[
-            const Divider(height: 1, color: Color(0xFFEBE8ED)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Kosongkan kolom bila harga sama dengan harga normal menu.',
-                    style: TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 11,
-                      color: AppTheme.textLight,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  // 2-Column layout: category name above input box, aligned and balanced
-                  Builder(
-                    builder: (context) {
-                      final List<List<CustomerCategoryModel>> pairs = [];
-                      for (int i = 0; i < _customerCategories.length; i += 2) {
-                        pairs.add([
-                          _customerCategories[i],
-                          if (i + 1 < _customerCategories.length) _customerCategories[i + 1],
-                        ]);
-                      }
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeInOutCubic,
+              alignment: Alignment.topCenter,
+              child: _isCustomerPricesExpanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 1, color: Color(0xFFEBE8ED)),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Kosongkan kolom bila harga sama dengan harga normal menu.',
+                                style: TextStyle(
+                                  fontFamily: AppTheme.fontFamily,
+                                  fontSize: 11,
+                                  color: AppTheme.textLight,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Builder(
+                                builder: (context) {
+                                  final orderedCats = List<CustomerCategoryModel>.from(_customerCategories);
+                                  orderedCats.sort((a, b) {
+                                    int getPriority(String name) {
+                                      final lower = name.toLowerCase();
+                                      if (lower.contains('member')) return 1;
+                                      if (lower.contains('karyawan')) return 2;
+                                      if (lower.contains('gofood')) return 3;
+                                      if (lower.contains('grab')) return 4;
+                                      return 5;
+                                    }
 
-                      return Column(
-                        children: pairs.map((pair) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _buildCategoryPriceField(pair[0]),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: pair.length > 1
-                                      ? _buildCategoryPriceField(pair[1])
-                                      : const SizedBox.shrink(),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                                    final pA = getPriority(a.name);
+                                    final pB = getPriority(b.name);
+                                    if (pA != pB) return pA.compareTo(pB);
+                                    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+                                  });
+
+                                  final List<List<CustomerCategoryModel>> pairs = [];
+                                  for (int i = 0; i < orderedCats.length; i += 2) {
+                                    pairs.add([
+                                      orderedCats[i],
+                                      if (i + 1 < orderedCats.length) orderedCats[i + 1],
+                                    ]);
+                                  }
+
+                                  return Column(
+                                    children: pairs.map((pair) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 6),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: _buildCategoryPriceField(pair[0]),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: pair.length > 1
+                                                  ? _buildCategoryPriceField(pair[1])
+                                                  : const SizedBox.shrink(),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -1308,43 +1224,23 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
       cat.name,
       () => TextEditingController(),
     );
-    final catColor = _getCategoryColor(cat.name);
-    final catIcon = _getCategoryIcon(cat.name);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Category Name with icon
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: catColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(catIcon, size: 12.5, color: catColor),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                cat.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
-              ),
-            ),
-          ],
+        Text(
+          cat.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textDark,
+          ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 4),
         // Price Input Field directly beneath
         SizedBox(
           height: 38,

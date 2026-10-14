@@ -35,6 +35,8 @@ enum PaymentMethod {
   const PaymentMethod(this.title, this.icon);
 }
 
+enum _LoyaltyDiscount { none, drink, foodAndDrink }
+
 
 class KasirScreen extends StatefulWidget {
   final TransactionModel? resumeTransaction;
@@ -72,6 +74,12 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   // Registry info menu untuk item-item keranjang secara global lintas kategori/tab
   final Map<int, MenuItemModel> _cartItemDetails = {};
   int? _resumedTransactionId;
+  String? _resumedInvoiceNumber;
+  String _activeCustomerCategory = 'Member';
+  String? _activeCustomerPhone;
+  PaymentMethod _activePaymentMethod = PaymentMethod.cash;
+  double? _activeCashGiven;
+  _LoyaltyDiscount _activeLoyaltyDiscount = _LoyaltyDiscount.none;
 
   // GlobalKey for cart target bounce and fly animation
   final GlobalKey _cartTargetKey = GlobalKey();
@@ -91,6 +99,20 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
 
     if (widget.resumeTransaction != null) {
       _resumedTransactionId = widget.resumeTransaction!.id;
+      _resumedInvoiceNumber = widget.resumeTransaction!.invoiceNumber;
+      _activeCustomerCategory = widget.resumeTransaction!.customerCategory ?? 'Member';
+      _activeCustomerPhone = widget.resumeTransaction!.customerPhone;
+      final methodStr = widget.resumeTransaction!.paymentMethod.toLowerCase();
+      _activePaymentMethod = methodStr.contains('qris') ? PaymentMethod.qris : PaymentMethod.cash;
+      _activeCashGiven = widget.resumeTransaction!.cashGiven > 0 ? widget.resumeTransaction!.cashGiven : null;
+      if (widget.resumeTransaction!.loyaltyDiscount != null) {
+        final ld = widget.resumeTransaction!.loyaltyDiscount!.toLowerCase();
+        if (ld.contains('food')) {
+          _activeLoyaltyDiscount = _LoyaltyDiscount.foodAndDrink;
+        } else if (ld.contains('drink')) {
+          _activeLoyaltyDiscount = _LoyaltyDiscount.drink;
+        }
+      }
       for (final item in widget.resumeTransaction!.items) {
         if (item.menuId != null) {
           _cart[item.menuId!] = item.quantity;
@@ -364,6 +386,16 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
       return;
     }
 
+    final wasEmpty = _cart.isEmpty;
+    if (wasEmpty && _resumedTransactionId == null) {
+      _activeCustomerCategory = 'Member';
+      _activeCustomerPhone = null;
+      _activePaymentMethod = PaymentMethod.cash;
+      _activeCashGiven = null;
+      _activeLoyaltyDiscount = _LoyaltyDiscount.none;
+      _resumedInvoiceNumber = null;
+    }
+
     if (item.id != null) {
       _cartItemDetails[item.id!] = item;
     }
@@ -381,7 +413,18 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   void _decrementCart(int itemId) {
     final currentQty = _cart[itemId] ?? 0;
     if (currentQty <= 1) {
-      setState(() => _cart.remove(itemId));
+      setState(() {
+        _cart.remove(itemId);
+        if (_cart.isEmpty) {
+          _activeCustomerCategory = 'Member';
+          _activeCustomerPhone = null;
+          _activePaymentMethod = PaymentMethod.cash;
+          _activeCashGiven = null;
+          _activeLoyaltyDiscount = _LoyaltyDiscount.none;
+          _resumedTransactionId = null;
+          _resumedInvoiceNumber = null;
+        }
+      });
     } else {
       setState(() => _cart[itemId] = currentQty - 1);
     }
@@ -392,14 +435,32 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     setState(() {
       _cart.clear();
       _resumedTransactionId = null;
+      _resumedInvoiceNumber = null;
+      _activeCustomerCategory = 'Member';
+      _activeCustomerPhone = null;
+      _activePaymentMethod = PaymentMethod.cash;
+      _activeCashGiven = null;
+      _activeLoyaltyDiscount = _LoyaltyDiscount.none;
     });
   }
 
   Future<TransactionModel?> _savePendingTransaction({
-    String customerCategory = 'Member',
+    String? customerCategory,
     String? customerPhone,
+    String? paymentMethod,
+    double? cashGiven,
+    double? change,
+    String? loyaltyDiscount,
   }) async {
     if (_cart.isEmpty) return null;
+
+    final cat = customerCategory ?? _activeCustomerCategory;
+    final phone = customerPhone ?? _activeCustomerPhone;
+    final method = paymentMethod ?? _activePaymentMethod.title;
+    final cash = cashGiven ?? _activeCashGiven ?? 0.0;
+    final loyalty = loyaltyDiscount ?? (_activeLoyaltyDiscount != _LoyaltyDiscount.none
+        ? (_activeLoyaltyDiscount == _LoyaltyDiscount.drink ? 'Loyalty Drink' : 'Loyalty Food & Drink')
+        : null);
 
     final allItems = await _db.getAllMenuItems();
     final List<TransactionItemModel> transactionItems = [];
@@ -412,7 +473,12 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
         if (matches.isNotEmpty) item = matches.first;
       }
       if (item != null) {
-        final unitPrice = item.getPriceForCategory(customerCategory);
+        double unitPrice = item.getPriceForCategory(cat);
+        if (loyalty == 'Loyalty Food & Drink') {
+          unitPrice = 0.0;
+        } else if (loyalty == 'Loyalty Drink' && item.type == CategoryType.drink) {
+          unitPrice = 0.0;
+        }
         final itemTotal = unitPrice * entry.value;
         total += itemTotal;
         transactionItems.add(TransactionItemModel(
@@ -430,18 +496,20 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     if (transactionItems.isEmpty) return null;
 
     final now = DateTime.now();
-    final invoiceNum = 'NLA-${now.millisecondsSinceEpoch.toString().substring(5)}';
+    final invoiceNum = _resumedInvoiceNumber ?? 'NLA-${now.millisecondsSinceEpoch.toString().substring(5)}';
+    final calcChange = change ?? ((method == 'Cash' && cash >= total) ? (cash - total) : 0.0);
 
     final pendingTrx = TransactionModel(
       id: _resumedTransactionId,
       invoiceNumber: invoiceNum,
       createdAt: now,
       totalAmount: total,
-      paymentMethod: 'Belum Dibayar',
-      cashGiven: 0.0,
-      change: 0.0,
-      customerCategory: customerCategory,
-      customerPhone: customerPhone,
+      paymentMethod: method,
+      cashGiven: cash,
+      change: calcChange,
+      customerCategory: cat,
+      customerPhone: phone,
+      loyaltyDiscount: loyalty,
       items: transactionItems,
       status: TransactionModel.statusBelumSelesai,
     );
@@ -455,7 +523,15 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     }
 
     _resumedTransactionId = null;
-    setState(() => _cart.clear());
+    _resumedInvoiceNumber = null;
+    setState(() {
+      _cart.clear();
+      _activeCustomerCategory = 'Member';
+      _activeCustomerPhone = null;
+      _activePaymentMethod = PaymentMethod.cash;
+      _activeCashGiven = null;
+      _activeLoyaltyDiscount = _LoyaltyDiscount.none;
+    });
 
     if (mounted) {
       PendingSavedPopup.show(context);
@@ -636,6 +712,12 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
         cart: Map.from(_cart),
         menuItems: allItems,
         itemResolver: (id) => _findItemById(id),
+        initialCustomerCategory: _activeCustomerCategory,
+        initialCustomerPhone: _activeCustomerPhone,
+        initialPaymentMethod: _activePaymentMethod,
+        initialCashGiven: _activeCashGiven,
+        initialLoyaltyDiscount: _activeLoyaltyDiscount,
+        initialInvoiceNumber: _resumedInvoiceNumber,
         onUpdateQty: (id, qty) {
           setState(() {
             if (qty <= 0) {
@@ -645,17 +727,38 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
             }
           });
         },
-        onCheckoutSuccess: (orderItems, method, cashGiven, change, customerCategory, [customerPhone]) async {
+        onDraftChanged: (cat, phone, method, cash, loyalty) {
+          _activeCustomerCategory = cat;
+          _activeCustomerPhone = phone;
+          _activePaymentMethod = method;
+          _activeCashGiven = cash;
+          _activeLoyaltyDiscount = loyalty;
+        },
+        onCheckoutSuccess: (orderItems, method, cashGiven, change, customerCategory, [customerPhone, loyaltyDiscount]) async {
           if (_resumedTransactionId != null) {
             await _db.deleteTransaction(_resumedTransactionId!);
             _resumedTransactionId = null;
           }
           _clearCart();
           _loadMenuItems();
-          _showReceiptDialog(orderItems, method, cashGiven, change, customerCategory, customerPhone);
+          _showReceiptDialog(orderItems, method, cashGiven, change, customerCategory, customerPhone, loyaltyDiscount);
         },
-        onSavePending: (customerCategory, [customerPhone]) {
-          _savePendingTransaction(customerCategory: customerCategory, customerPhone: customerPhone);
+        onSavePending: ({
+          required customerCategory,
+          customerPhone,
+          required paymentMethod,
+          required cashGiven,
+          required change,
+          loyaltyDiscount,
+        }) {
+          _savePendingTransaction(
+            customerCategory: customerCategory,
+            customerPhone: customerPhone,
+            paymentMethod: paymentMethod,
+            cashGiven: cashGiven,
+            change: change,
+            loyaltyDiscount: loyaltyDiscount,
+          );
         },
       ),
     );
@@ -668,6 +771,7 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     double change,
     String customerCategory, [
     String? customerPhone,
+    String? loyaltyDiscount,
   ]) {
     final now = DateTime.now();
     final formattedTime =
@@ -855,6 +959,31 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (loyaltyDiscount != null && loyaltyDiscount.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Diskon Loyalty',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                    Text(
+                      loyaltyDiscount,
+                      style: const TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2E7D32),
                       ),
                     ),
                   ],
@@ -1905,21 +2034,49 @@ class _CheckoutModal extends StatefulWidget {
   final List<MenuItemModel> menuItems;
   final MenuItemModel? Function(int id)? itemResolver;
   final Function(int id, int qty) onUpdateQty;
+  final String? initialCustomerCategory;
+  final String? initialCustomerPhone;
+  final PaymentMethod? initialPaymentMethod;
+  final double? initialCashGiven;
+  final _LoyaltyDiscount? initialLoyaltyDiscount;
+  final String? initialInvoiceNumber;
+  final Function(
+    String customerCategory,
+    String? customerPhone,
+    PaymentMethod paymentMethod,
+    double? cashGiven,
+    _LoyaltyDiscount loyaltyDiscount,
+  )? onDraftChanged;
   final Function(
     List<_OrderItemSummary> orderItems,
     PaymentMethod method,
     double cashGiven,
     double change,
     String customerCategory,
+    String? customerPhone, [
+    String? loyaltyDiscount,
+  ]) onCheckoutSuccess;
+  final Function({
+    required String customerCategory,
     String? customerPhone,
-  ) onCheckoutSuccess;
-  final Function(String customerCategory, [String? customerPhone]) onSavePending;
+    required String paymentMethod,
+    required double cashGiven,
+    required double change,
+    String? loyaltyDiscount,
+  }) onSavePending;
 
   const _CheckoutModal({
     required this.cart,
     required this.menuItems,
     this.itemResolver,
     required this.onUpdateQty,
+    this.initialCustomerCategory,
+    this.initialCustomerPhone,
+    this.initialPaymentMethod,
+    this.initialCashGiven,
+    this.initialLoyaltyDiscount,
+    this.initialInvoiceNumber,
+    this.onDraftChanged,
     required this.onCheckoutSuccess,
     required this.onSavePending,
   });
@@ -1936,6 +2093,33 @@ class _CheckoutModalState extends State<_CheckoutModal> {
   bool _phoneHasError = false;
   bool _isProcessing = false;
   bool _hasCashError = false;
+  bool _isDiscardingOrCompleted = false;
+  _LoyaltyDiscount _loyaltyDiscount = _LoyaltyDiscount.none;
+
+  void _notifyDraftChanged() {
+    if (_isDiscardingOrCompleted) return;
+    final phone = _phoneController.text.trim();
+    final cash = _selectedMethod == PaymentMethod.cash
+        ? (_cashInputController.text.trim().isEmpty ? null : _cashGiven)
+        : null;
+    widget.onDraftChanged?.call(
+      _selectedCustomerCategory,
+      phone.isNotEmpty ? phone : null,
+      _selectedMethod,
+      cash,
+      _loyaltyDiscount,
+    );
+  }
+
+  double _getItemPrice(MenuItemModel item) {
+    if (_loyaltyDiscount == _LoyaltyDiscount.foodAndDrink) {
+      return 0.0;
+    }
+    if (_loyaltyDiscount == _LoyaltyDiscount.drink && item.type == CategoryType.drink) {
+      return 0.0;
+    }
+    return item.getPriceForCategory(_selectedCustomerCategory);
+  }
 
   bool get _isMemberOrKaryawan {
     final lower = _selectedCustomerCategory.toLowerCase();
@@ -1955,6 +2139,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
 
   void _handleClose(BuildContext context) {
     if (_localCart.isEmpty) {
+      _isDiscardingOrCompleted = true;
       Navigator.pop(context);
       return;
     }
@@ -1981,11 +2166,28 @@ class _CheckoutModalState extends State<_CheckoutModal> {
             icon: const Icon(Icons.bookmark_added_rounded, size: 16),
             label: const Text('Simpan ke Riwayat'),
             onPressed: () {
+              _isDiscardingOrCompleted = true;
               Navigator.pop(ctx);
               Navigator.pop(context);
+              final total = _totalAmount;
+              final phoneText = _phoneController.text.trim();
+              final actualCashGiven = _selectedMethod == PaymentMethod.cash
+                  ? (_cashInputController.text.trim().isEmpty ? 0.0 : _cashGiven)
+                  : 0.0;
+              final actualChange = _selectedMethod == PaymentMethod.cash && actualCashGiven >= total
+                  ? (actualCashGiven - total)
+                  : 0.0;
+              final loyaltyStr = _loyaltyDiscount != _LoyaltyDiscount.none
+                  ? (_loyaltyDiscount == _LoyaltyDiscount.drink ? 'Loyalty Drink' : 'Loyalty Food & Drink')
+                  : null;
+
               widget.onSavePending(
-                _selectedCustomerCategory,
-                _isMemberOrKaryawan ? _phoneController.text.trim() : null,
+                customerCategory: _selectedCustomerCategory,
+                customerPhone: phoneText.isNotEmpty ? phoneText : null,
+                paymentMethod: _selectedMethod.title,
+                cashGiven: actualCashGiven,
+                change: actualChange,
+                loyaltyDiscount: loyaltyStr,
               );
             },
           ),
@@ -2021,6 +2223,21 @@ class _CheckoutModalState extends State<_CheckoutModal> {
     super.initState();
     _localCart = Map.from(widget.cart);
     _cashInputController = TextEditingController();
+    if (widget.initialCustomerCategory != null) {
+      _selectedCustomerCategory = widget.initialCustomerCategory!;
+    }
+    if (widget.initialCustomerPhone != null) {
+      _phoneController.text = widget.initialCustomerPhone!;
+    }
+    if (widget.initialPaymentMethod != null) {
+      _selectedMethod = widget.initialPaymentMethod!;
+    }
+    if (widget.initialCashGiven != null && widget.initialCashGiven! > 0) {
+      _cashInputController.text = Formatters.formatNumber(widget.initialCashGiven!);
+    }
+    if (widget.initialLoyaltyDiscount != null) {
+      _loyaltyDiscount = widget.initialLoyaltyDiscount!;
+    }
     _customerCategories = List.from(DatabaseService.instance.cachedCustomerCategories);
     if (_displayCategoryNames.isNotEmpty && !_displayCategoryNames.contains(_selectedCustomerCategory)) {
       _selectedCustomerCategory = _displayCategoryNames.first;
@@ -2042,6 +2259,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
 
   @override
   void dispose() {
+    _notifyDraftChanged();
     _cashInputController.dispose();
     _phoneController.dispose();
     super.dispose();
@@ -2062,7 +2280,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
     for (final entry in _localCart.entries) {
       final item = _findItem(entry.key);
       if (item != null) {
-        final unitPrice = item.getPriceForCategory(_selectedCustomerCategory);
+        final unitPrice = _getItemPrice(item);
         total += unitPrice * entry.value;
       }
     }
@@ -2081,7 +2299,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
     if (_localCart.isEmpty) return;
 
     final total = _totalAmount;
-    if (_selectedMethod == PaymentMethod.cash) {
+    if (_selectedMethod == PaymentMethod.cash && total > 0) {
       final textTrim = _cashInputController.text.trim();
       final isNotEntered = textTrim.isEmpty || _cashGiven == 0;
       if (isNotEntered) {
@@ -2142,7 +2360,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
       for (final entry in _localCart.entries) {
         final item = _findItem(entry.key);
         if (item != null) {
-          final unitPrice = item.getPriceForCategory(_selectedCustomerCategory);
+          final unitPrice = _getItemPrice(item);
           orderSummary.add(_OrderItemSummary(
             id: item.id!,
             name: item.name,
@@ -2163,10 +2381,16 @@ class _CheckoutModalState extends State<_CheckoutModal> {
 
       // Simpan ke riwayat transaksi database
       final now = DateTime.now();
-      final invoiceNum = 'NLA-${now.millisecondsSinceEpoch.toString().substring(5)}';
-      final actualCashGiven = _selectedMethod == PaymentMethod.cash ? _cashGiven : total;
+      final invoiceNum = widget.initialInvoiceNumber ?? 'NLA-${now.millisecondsSinceEpoch.toString().substring(5)}';
+      final actualCashGiven = _selectedMethod == PaymentMethod.cash
+          ? (_cashInputController.text.trim().isEmpty ? total : _cashGiven)
+          : total;
       final actualChange = _selectedMethod == PaymentMethod.cash ? _changeAmount : 0.0;
-      final savedPhone = _isMemberOrKaryawan ? _phoneController.text.trim() : null;
+      final savedPhone = _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null;
+
+      final loyaltyStr = _loyaltyDiscount != _LoyaltyDiscount.none
+          ? (_loyaltyDiscount == _LoyaltyDiscount.drink ? 'Loyalty Drink' : 'Loyalty Food & Drink')
+          : null;
 
       final transactionRecord = TransactionModel(
         invoiceNumber: invoiceNum,
@@ -2178,11 +2402,13 @@ class _CheckoutModalState extends State<_CheckoutModal> {
         cashGiven: actualCashGiven,
         change: actualChange,
         items: transactionItems,
+        loyaltyDiscount: loyaltyStr,
       );
 
       await DatabaseService.instance.saveTransaction(transactionRecord);
 
       if (mounted) {
+        _isDiscardingOrCompleted = true;
         Navigator.pop(context); // close modal
         widget.onCheckoutSuccess(
           orderSummary,
@@ -2191,6 +2417,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
           actualChange,
           _selectedCustomerCategory,
           savedPhone,
+          loyaltyStr,
         );
       }
     } catch (e) {
@@ -2269,42 +2496,10 @@ class _CheckoutModalState extends State<_CheckoutModal> {
 
             // Customer Category Selector
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Kategori Pelanggan',
-                        style: TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textDark,
-                        ),
-                      ),
-                      if (_selectedCustomerCategory != 'Reguler')
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8F5E9),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'Harga Kategori Aktif',
-                            style: TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF2E7D32),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -2346,7 +2541,9 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                         final item = _findItem(itemId);
                         if (item == null) return const SizedBox.shrink();
 
-                        final unitPrice = item.getPriceForCategory(_selectedCustomerCategory);
+                        final originalPrice = item.getPriceForCategory(_selectedCustomerCategory);
+                        final unitPrice = _getItemPrice(item);
+                        final isFreeFromLoyalty = unitPrice == 0 && originalPrice > 0;
                         final hasCustomPrice = _selectedCustomerCategory != 'Reguler' &&
                             item.hasCustomPriceForCategory(_selectedCustomerCategory);
 
@@ -2384,32 +2581,45 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                     spacing: 6,
                                     runSpacing: 2,
                                     children: [
-                                      Text(
-                                        Formatters.currency(unitPrice),
-                                        style: const TextStyle(
-                                          fontFamily: AppTheme.fontFamily,
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.textMedium,
-                                        ),
-                                      ),
-                                      if (hasCustomPrice)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFE8F5E9),
-                                            borderRadius: BorderRadius.circular(4),
+                                      if (isFreeFromLoyalty) ...[
+                                        Text(
+                                          Formatters.currency(originalPrice),
+                                          style: const TextStyle(
+                                            fontFamily: AppTheme.fontFamily,
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.textMedium,
+                                            decoration: TextDecoration.lineThrough,
                                           ),
-                                          child: Text(
-                                            _selectedCustomerCategory,
-                                            style: const TextStyle(
-                                              fontFamily: AppTheme.fontFamily,
-                                              fontSize: 9.5,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF2E7D32),
+                                        ),
+                                      ] else ...[
+                                        Text(
+                                          Formatters.currency(unitPrice),
+                                          style: const TextStyle(
+                                            fontFamily: AppTheme.fontFamily,
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.textMedium,
+                                          ),
+                                        ),
+                                        if (hasCustomPrice)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFE8F5E9),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              _selectedCustomerCategory,
+                                              style: const TextStyle(
+                                                fontFamily: AppTheme.fontFamily,
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF2E7D32),
+                                              ),
                                             ),
                                           ),
-                                        ),
+                                      ],
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                         decoration: BoxDecoration(
@@ -2441,11 +2651,19 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                     setState(() {
                                       if (qty <= 1) {
                                         _localCart.remove(itemId);
+                                        if (_localCart.isEmpty) {
+                                          _phoneController.clear();
+                                          _cashInputController.clear();
+                                          _selectedCustomerCategory = 'Member';
+                                          _selectedMethod = PaymentMethod.cash;
+                                          _loyaltyDiscount = _LoyaltyDiscount.none;
+                                        }
                                       } else {
                                         _localCart[itemId] = qty - 1;
                                       }
                                     });
                                     widget.onUpdateQty(itemId, qty - 1);
+                                    _notifyDraftChanged();
                                   },
                                   child: Container(
                                     width: 26,
@@ -2504,6 +2722,54 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                     ),
             ),
 
+            // Loyalty Discount Buttons (Bawah Daftar Menu)
+            if (_localCart.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildLoyaltyButton(
+                        title: 'Loyalty Drink',
+                        icon: Icons.local_drink_rounded,
+                        isActive: _loyaltyDiscount == _LoyaltyDiscount.drink,
+                        onTap: () {
+                          setState(() {
+                            if (_loyaltyDiscount == _LoyaltyDiscount.drink) {
+                              _loyaltyDiscount = _LoyaltyDiscount.none;
+                            } else {
+                              _loyaltyDiscount = _LoyaltyDiscount.drink;
+                            }
+                            _hasCashError = false;
+                          });
+                          _notifyDraftChanged();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildLoyaltyButton(
+                        title: 'Loyalty Food & Drink',
+                        icon: Icons.restaurant_rounded,
+                        isActive: _loyaltyDiscount == _LoyaltyDiscount.foodAndDrink,
+                        onTap: () {
+                          setState(() {
+                            if (_loyaltyDiscount == _LoyaltyDiscount.foodAndDrink) {
+                              _loyaltyDiscount = _LoyaltyDiscount.none;
+                            } else {
+                              _loyaltyDiscount = _LoyaltyDiscount.foodAndDrink;
+                            }
+                            _hasCashError = false;
+                          });
+                          _notifyDraftChanged();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             const Divider(height: 1, color: Color(0xFFFFEBF0)),
 
             // Payment Options Section
@@ -2531,10 +2797,13 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                         child: Padding(
                           padding: EdgeInsets.only(right: isFirst ? 8 : 0),
                           child: InkWell(
-                            onTap: () => setState(() {
-                              _selectedMethod = m;
-                              _hasCashError = false;
-                            }),
+                            onTap: () {
+                              setState(() {
+                                _selectedMethod = m;
+                                _hasCashError = false;
+                              });
+                              _notifyDraftChanged();
+                            },
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -2587,6 +2856,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                               } else {
                                 setState(() {});
                               }
+                              _notifyDraftChanged();
                             },
                             style: const TextStyle(
                               fontFamily: AppTheme.fontFamily,
@@ -2613,6 +2883,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                 onPressed: () {
                                   _cashInputController.clear();
                                   setState(() => _hasCashError = false);
+                                  _notifyDraftChanged();
                                 },
                               ),
                             ),
@@ -2629,6 +2900,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                           onPressed: () {
                             _cashInputController.text = Formatters.formatNumber(total);
                             setState(() => _hasCashError = false);
+                            _notifyDraftChanged();
                           },
                           child: const Text(
                             'Uang Pas',
@@ -2716,7 +2988,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                                   'Proses Pembayaran',
                                   style: TextStyle(
                                     fontFamily: AppTheme.fontFamily,
-                                    fontSize: 14,
+                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -2724,38 +2996,64 @@ class _CheckoutModalState extends State<_CheckoutModal> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        backgroundColor: const Color(0xFFFFF8E1),
-                      ),
-                      icon: const Icon(Icons.pending_actions_rounded, size: 17, color: Color(0xFFE65100)),
-                      label: const Text(
-                        'Simpan Transaksi Belum Selesai',
-                        style: TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFE65100),
-                        ),
-                      ),
-                      onPressed: _localCart.isEmpty || _isProcessing
-                          ? null
-                          : () {
-                              Navigator.pop(context);
-                              widget.onSavePending(
-                                _selectedCustomerCategory,
-                                _isMemberOrKaryawan ? _phoneController.text.trim() : null,
-                              );
-                            },
-                    ),
-                  ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoyaltyButton({
+    required String title,
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? AppTheme.primaryPink : AppTheme.softPinkBackground.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isActive ? AppTheme.primaryPinkDark : const Color(0xFFFFD1DC),
+            width: isActive ? 1.5 : 1.0,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primaryPink.withValues(alpha: 0.25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isActive ? Icons.check_circle_rounded : icon,
+              size: 15,
+              color: isActive ? Colors.white : AppTheme.primaryPink,
+            ),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 11.5,
+                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                  color: isActive ? Colors.white : AppTheme.textDark,
+                ),
               ),
             ),
           ],
@@ -2774,6 +3072,7 @@ class _CheckoutModalState extends State<_CheckoutModal> {
             _selectedCustomerCategory = name;
             _phoneHasError = false;
           });
+          _notifyDraftChanged();
         },
         borderRadius: BorderRadius.circular(20),
         child: AnimatedContainer(
@@ -2802,137 +3101,81 @@ class _CheckoutModalState extends State<_CheckoutModal> {
   }
 
   Widget _buildPhoneInputField() {
-    final isRequired = _isMemberOrKaryawan;
     final isDisabled = _isOnlineDelivery;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDisabled ? const Color(0xFFF7F7F9) : const Color(0xFFFFF9FA),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _phoneHasError
-              ? AppTheme.dangerRed
-              : (isDisabled ? const Color(0xFFE5E5EA) : const Color(0xFFFFD1DC)),
-          width: _phoneHasError ? 1.5 : 1,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _phoneController,
+          enabled: !isDisabled,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isDisabled ? AppTheme.textLight : AppTheme.textDark,
+          ),
+          onChanged: (_) {
+            if (_phoneHasError) {
+              setState(() => _phoneHasError = false);
+            }
+            _notifyDraftChanged();
+          },
+          decoration: InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: isDisabled ? const Color(0xFFF7F7F9) : Colors.white,
+            prefixIcon: Icon(
+              isDisabled ? Icons.phone_disabled_rounded : Icons.phone_android_rounded,
+              size: 19,
+              color: isDisabled ? AppTheme.textLight : AppTheme.primaryPink,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            hintText: isDisabled
+                ? 'Nomor Telepon Pelanggan (Tidak perlu diisi)'
+                : 'Nomor Telepon Pelanggan',
+            hintStyle: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 12.5,
+              color: isDisabled ? AppTheme.textLight : AppTheme.textMedium.withValues(alpha: 0.6),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(
+                color: _phoneHasError ? AppTheme.dangerRed : const Color(0xFFFFD1DC),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(
+                color: _phoneHasError ? AppTheme.dangerRed : const Color(0xFFFFD1DC),
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE5E5EA)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: AppTheme.primaryPink, width: 1.5),
+            ),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    isDisabled ? Icons.phone_disabled_rounded : Icons.phone_android_rounded,
-                    size: 14,
-                    color: isDisabled ? AppTheme.textLight : AppTheme.primaryPink,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Nomor Telepon Pelanggan',
-                    style: TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: isDisabled ? AppTheme.textMedium : AppTheme.textDark,
-                    ),
-                  ),
-                  if (isRequired)
-                    const Text(' *', style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: isDisabled
-                      ? const Color(0xFFEEEEEE)
-                      : const Color(0xFFFFEBEE),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  isDisabled ? 'Dinonaktifkan ($_selectedCustomerCategory)' : 'Wajib Diisi',
-                  style: TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w700,
-                    color: isDisabled ? AppTheme.textLight : AppTheme.dangerRed,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 38,
-            child: TextField(
-              controller: _phoneController,
-              enabled: !isDisabled,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: isDisabled ? AppTheme.textLight : AppTheme.textDark,
-              ),
-              onChanged: (_) {
-                if (_phoneHasError) {
-                  setState(() => _phoneHasError = false);
-                }
-              },
-              decoration: InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: isDisabled ? const Color(0xFFEEEEF2) : Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                hintText: isDisabled
-                    ? 'Tidak perlu nomor telepon untuk pesanan $_selectedCustomerCategory'
-                    : 'Contoh: 081234567890',
-                hintStyle: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 11.5,
-                  color: isDisabled ? AppTheme.textLight : AppTheme.textMedium.withValues(alpha: 0.6),
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: _phoneHasError ? AppTheme.dangerRed : const Color(0xFFE0E0E0),
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: _phoneHasError ? AppTheme.dangerRed : const Color(0xFFE0E0E0),
-                  ),
-                ),
-                disabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppTheme.primaryPink, width: 1.5),
-                ),
-              ),
+        if (_phoneHasError) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Nomor telepon wajib diisi untuk kategori $_selectedCustomerCategory',
+            style: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 10.5,
+              color: AppTheme.dangerRed,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          if (_phoneHasError) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Nomor telepon wajib diisi untuk kategori $_selectedCustomerCategory',
-              style: const TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 10.5,
-                color: AppTheme.dangerRed,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 

@@ -60,6 +60,7 @@ class TransactionModel {
   final double change;
   final String? customerCategory;
   final String? customerPhone;
+  final String? loyaltyDiscount;
   final List<TransactionItemModel> items;
   final String status;
 
@@ -73,6 +74,7 @@ class TransactionModel {
     required this.change,
     this.customerCategory,
     this.customerPhone,
+    this.loyaltyDiscount,
     required this.items,
     this.status = statusSelesai,
   }) : invoiceNumber = invoiceNumber.startsWith('TRX-')
@@ -83,6 +85,23 @@ class TransactionModel {
   bool get isPending => status == statusBelumSelesai;
 
   int get totalItemsCount => items.fold(0, (sum, i) => sum + i.quantity);
+
+  String? get displayLoyaltyDiscount {
+    if (loyaltyDiscount != null && loyaltyDiscount!.isNotEmpty) {
+      return loyaltyDiscount;
+    }
+    if (items.isEmpty) return null;
+    final hasDrinks = items.any((i) => i.categoryType == CategoryType.drink);
+    final hasFoods = items.any((i) => i.categoryType == CategoryType.food);
+    final allDrinksFree = hasDrinks && items.where((i) => i.categoryType == CategoryType.drink).every((i) => i.price == 0);
+    final allFoodsFree = hasFoods && items.where((i) => i.categoryType == CategoryType.food).every((i) => i.price == 0);
+    if (allDrinksFree && allFoodsFree) {
+      return 'Loyalty Food & Drink';
+    } else if (allDrinksFree) {
+      return 'Loyalty Drink';
+    }
+    return null;
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -95,6 +114,7 @@ class TransactionModel {
       'change': change,
       'customer_category': customerCategory,
       'customer_phone': customerPhone,
+      'loyalty_discount': loyaltyDiscount,
       'items_json': jsonEncode(items.map((i) => i.toMap()).toList()),
       'status': status,
     };
@@ -130,6 +150,7 @@ class TransactionModel {
       change: (map['change'] as num?)?.toDouble() ?? 0.0,
       customerCategory: map['customer_category'] as String?,
       customerPhone: map['customer_phone'] as String?,
+      loyaltyDiscount: map['loyalty_discount'] as String?,
       items: parsedItems,
       status: map['status'] as String? ?? TransactionModel.statusSelesai,
     );
@@ -145,6 +166,7 @@ class TransactionModel {
     double? change,
     String? customerCategory,
     String? customerPhone,
+    String? loyaltyDiscount,
     List<TransactionItemModel>? items,
     String? status,
   }) {
@@ -158,6 +180,7 @@ class TransactionModel {
       change: change ?? this.change,
       customerCategory: customerCategory ?? this.customerCategory,
       customerPhone: customerPhone ?? this.customerPhone,
+      loyaltyDiscount: loyaltyDiscount ?? this.loyaltyDiscount,
       items: items ?? this.items,
       status: status ?? this.status,
     );
