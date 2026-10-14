@@ -1418,46 +1418,72 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           bottom: BorderSide(color: Color(0xFFFFEBF0), width: 1),
         ),
       ),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
         children: [
-          _buildFilterChip(
-            label: 'Semua',
-            count: null,
-            isSelected: selectedSub == null,
-            onTap: () => _selectSubCategory(null),
-          ),
-          const SizedBox(width: 8),
-          ...subCategories.map((sub) {
-            final isSelected = selectedSub?.id == sub.id;
-            final count = _subCategoryCounts[sub.id] ?? 0;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _buildFilterChip(
-                label: sub.name,
-                count: count,
-                isSelected: isSelected,
-                onTap: () => _selectSubCategory(sub),
-              ),
-            );
-          }),
-          ActionChip(
-            avatar: const Icon(Icons.settings_outlined, size: 15, color: AppTheme.primaryPink),
-            label: const Text(
-              'Kelola Kategori',
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryPink,
+          // Tombol Kelola Kategori menempel di start (hanya icon gerigi)
+          Padding(
+            padding: const EdgeInsets.only(left: 14, right: 8),
+            child: Tooltip(
+              message: 'Kelola Kategori',
+              child: Material(
+                color: AppTheme.softPinkBackground,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: const BorderSide(color: Color(0xFFFFD1DC), width: 1),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _openManageSubCategories(),
+                  child: const SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: Center(
+                      child: Icon(
+                        Icons.settings_outlined,
+                        size: 18,
+                        color: AppTheme.primaryPink,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-            backgroundColor: AppTheme.softPinkBackground,
-            side: const BorderSide(color: Color(0xFFFFD1DC), width: 1),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            onPressed: () => _openManageSubCategories(),
+          ),
+          // Pembatas tipis antara tombol pinned dan list kategori yang dapat di-scroll
+          Container(
+            height: 20,
+            width: 1,
+            color: const Color(0xFFFFE0E8),
+            margin: const EdgeInsets.only(right: 8),
+          ),
+          // Scrollable category filter chips
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 14),
+              children: [
+                _buildFilterChip(
+                  label: 'Semua',
+                  count: null,
+                  isSelected: selectedSub == null,
+                  onTap: () => _selectSubCategory(null),
+                ),
+                const SizedBox(width: 8),
+                ...subCategories.map((sub) {
+                  final isSelected = selectedSub?.id == sub.id;
+                  final count = _subCategoryCounts[sub.id] ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _buildFilterChip(
+                      label: sub.name,
+                      count: count,
+                      isSelected: isSelected,
+                      onTap: () => _selectSubCategory(sub),
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
         ],
       ),
