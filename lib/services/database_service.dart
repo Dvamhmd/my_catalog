@@ -157,6 +157,7 @@ class DatabaseService {
         name TEXT NOT NULL,
         type TEXT NOT NULL,
         image_path TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     ''');
@@ -256,7 +257,11 @@ class DatabaseService {
   Future<void> _loadToCacheFromSqlite() async {
     if (_database == null) return;
     try {
-      final subMaps = await _database!.query('sub_categories', orderBy: 'name COLLATE NOCASE ASC');
+      try {
+        await _database!.execute("ALTER TABLE sub_categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+      } catch (_) {}
+
+      final subMaps = await _database!.query('sub_categories', orderBy: 'sort_order ASC, id ASC');
       _cachedSubCategories.clear();
       _cachedSubCategories.addAll(subMaps.map((m) => SubCategoryModel.fromMap(m)));
 
@@ -523,10 +528,43 @@ class DatabaseService {
   Future<List<SubCategoryModel>> getSubCategories(CategoryType type) async {
     if (!_isInitialized) await initialize();
 
-    return _cachedSubCategories
+    final list = _cachedSubCategories
         .where((sub) => sub.type == type)
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        .toList();
+    list.sort((a, b) {
+      if (a.sortOrder != b.sortOrder) {
+        return a.sortOrder.compareTo(b.sortOrder);
+      }
+      return (a.id ?? 0).compareTo(b.id ?? 0);
+    });
+    return list;
+  }
+
+  Future<void> reorderSubCategories(List<SubCategoryModel> orderedList) async {
+    if (!_isInitialized) await initialize();
+
+    for (int i = 0; i < orderedList.length; i++) {
+      final sub = orderedList[i];
+      final newSub = sub.copyWith(sortOrder: i);
+      final cacheIndex = _cachedSubCategories.indexWhere((s) => s.id == sub.id);
+      if (cacheIndex != -1) {
+        _cachedSubCategories[cacheIndex] = newSub;
+      }
+      if (!_useFallbackStorage && _database != null && sub.id != null) {
+        try {
+          await _database!.update(
+            'sub_categories',
+            {'sort_order': i},
+            where: 'id = ?',
+            whereArgs: [sub.id],
+          );
+        } catch (_) {}
+      }
+    }
+
+    if (_useFallbackStorage) {
+      await _saveFallbackToPrefs();
+    }
   }
 
   Future<int> insertSubCategory(SubCategoryModel subCategory) async {
@@ -538,7 +576,15 @@ class DatabaseService {
       newId = maxId + 1;
     }
 
-    final newModel = subCategory.copyWith(id: newId);
+    int nextSortOrder = subCategory.sortOrder;
+    if (nextSortOrder == 0) {
+      final currentTypeSubs = _cachedSubCategories.where((s) => s.type == subCategory.type);
+      if (currentTypeSubs.isNotEmpty) {
+        nextSortOrder = currentTypeSubs.map((s) => s.sortOrder).fold(0, (max, o) => o > max ? o : max) + 1;
+      }
+    }
+
+    final newModel = subCategory.copyWith(id: newId, sortOrder: nextSortOrder);
     _cachedSubCategories.add(newModel);
 
     if (!_useFallbackStorage && _database != null) {

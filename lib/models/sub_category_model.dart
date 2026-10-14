@@ -5,6 +5,7 @@ class SubCategoryModel {
   final String name;
   final CategoryType type;
   final String? imagePath;
+  final int sortOrder;
   final DateTime createdAt;
 
   SubCategoryModel({
@@ -12,6 +13,7 @@ class SubCategoryModel {
     required this.name,
     required this.type,
     this.imagePath,
+    this.sortOrder = 0,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -21,6 +23,7 @@ class SubCategoryModel {
       'name': name,
       'type': type.name,
       'image_path': imagePath,
+      'sort_order': sortOrder,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -31,6 +34,7 @@ class SubCategoryModel {
       name: map['name'] as String,
       type: CategoryType.fromString(map['type'] as String),
       imagePath: map['image_path'] as String?,
+      sortOrder: (map['sort_order'] as int?) ?? 0,
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -43,6 +47,7 @@ class SubCategoryModel {
     CategoryType? type,
     String? imagePath,
     bool clearImage = false,
+    int? sortOrder,
     DateTime? createdAt,
   }) {
     return SubCategoryModel(
@@ -50,6 +55,7 @@ class SubCategoryModel {
       name: name ?? this.name,
       type: type ?? this.type,
       imagePath: clearImage ? null : (imagePath ?? this.imagePath),
+      sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -62,9 +68,11 @@ class SubCategoryModel {
           id == other.id &&
           name == other.name &&
           type == other.type &&
-          imagePath == other.imagePath;
+          imagePath == other.imagePath &&
+          sortOrder == other.sortOrder;
 
   @override
-  int get hashCode => id.hashCode ^ name.hashCode ^ type.hashCode ^ (imagePath?.hashCode ?? 0);
+  int get hashCode =>
+      id.hashCode ^ name.hashCode ^ type.hashCode ^ (imagePath?.hashCode ?? 0) ^ sortOrder.hashCode;
 }
 

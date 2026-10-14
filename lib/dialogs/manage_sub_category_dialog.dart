@@ -12,6 +12,7 @@ class ManageSubCategoryDialog extends StatefulWidget {
   final Function(String name, String? imagePath) onAdd;
   final Function(SubCategoryModel subCategory, String newName, String? newImagePath, bool clearImage) onEdit;
   final Function(SubCategoryModel subCategory) onDelete;
+  final Function(List<SubCategoryModel> newOrderedList)? onReorder;
 
   const ManageSubCategoryDialog({
     super.key,
@@ -20,6 +21,7 @@ class ManageSubCategoryDialog extends StatefulWidget {
     required this.onAdd,
     required this.onEdit,
     required this.onDelete,
+    this.onReorder,
   });
 
   @override
@@ -31,6 +33,29 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _picker = ImagePicker();
   String? _newCategoryImagePath;
+  late List<SubCategoryModel> _subCategories;
+
+  @override
+  void initState() {
+    super.initState();
+    _subCategories = List<SubCategoryModel>.from(widget.subCategories);
+  }
+
+  @override
+  void didUpdateWidget(covariant ManageSubCategoryDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.subCategories != oldWidget.subCategories) {
+      _subCategories = List<SubCategoryModel>.from(widget.subCategories);
+    }
+  }
+
+  void _onReorderItem(int oldIndex, int newIndex) {
+    setState(() {
+      final item = _subCategories.removeAt(oldIndex);
+      _subCategories.insert(newIndex, item);
+    });
+    widget.onReorder?.call(_subCategories);
+  }
 
   @override
   void dispose() {
@@ -631,24 +656,42 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
           ),
 
           // List of Existing Categories Header
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Daftar Kategori',
-                style: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textLight,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Daftar Kategori',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textLight,
+                  ),
                 ),
-              ),
+                if (_subCategories.length > 1)
+                  const Row(
+                    children: [
+                      Icon(Icons.drag_indicator_rounded, size: 13, color: AppTheme.textLight),
+                      SizedBox(width: 3),
+                      Text(
+                        'Tahan & geser untuk urutkan',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 11,
+                          color: AppTheme.textLight,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ),
 
           Flexible(
-            child: widget.subCategories.isEmpty
+            child: _subCategories.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(32),
                     child: Text(
@@ -661,20 +704,23 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
                       ),
                     ),
                   )
-                : ListView.separated(
+                : ReorderableListView.builder(
                     shrinkWrap: true,
+                    buildDefaultDragHandles: false,
                     padding: const EdgeInsets.only(
                       left: 16,
                       right: 16,
                       top: 6,
                       bottom: 16,
                     ),
-                    itemCount: widget.subCategories.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
+                    itemCount: _subCategories.length,
+                    onReorderItem: _onReorderItem,
                     itemBuilder: (context, index) {
-                      final sub = widget.subCategories[index];
+                      final sub = _subCategories[index];
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        key: ValueKey(sub.id ?? 'sub_${sub.name}_$index'),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(
                           color: AppTheme.softPinkBackground.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(12),
@@ -682,6 +728,21 @@ class _ManageSubCategoryDialogState extends State<ManageSubCategoryDialog> {
                         ),
                         child: Row(
                           children: [
+                            // Drag Handle
+                            ReorderableDragStartListener(
+                              index: index,
+                              child: Container(
+                                padding: const EdgeInsets.only(left: 2, right: 8, top: 4, bottom: 4),
+                                child: const MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Icon(
+                                    Icons.drag_indicator_rounded,
+                                    color: AppTheme.textLight,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
                             // Category Image / Icon thumbnail (Tappable for Quick Photo Change)
                             GestureDetector(
                               onTap: () {

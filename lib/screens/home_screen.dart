@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late final TabController _tabController;
   final DatabaseService _db = DatabaseService.instance;
 
-  CategoryType _activeType = CategoryType.food;
+  CategoryType _activeType = CategoryType.drink;
   LayoutMode _layoutMode = LayoutMode.medium; // Default 2 columns (Sedang)
   SubCategoryViewMode _subCategoryViewMode = SubCategoryViewMode.tab; // Default Tab
 
@@ -74,9 +74,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _handleTabChange() {
-    if (_tabController.indexIsChanging || _tabController.index != _activeType.index) {
+    final targetType = _tabController.index == 0 ? CategoryType.drink : CategoryType.food;
+    if (_tabController.indexIsChanging || targetType != _activeType) {
       setState(() {
-        _activeType = _tabController.index == 0 ? CategoryType.food : CategoryType.drink;
+        _activeType = targetType;
+        if (_subCategoryViewMode == SubCategoryViewMode.tab) {
+          if (_activeType == CategoryType.food && _selectedFoodSubCategory == null && _foodSubCategories.isNotEmpty) {
+            _selectedFoodSubCategory = _foodSubCategories.first;
+          } else if (_activeType == CategoryType.drink && _selectedDrinkSubCategory == null && _drinkSubCategories.isNotEmpty) {
+            _selectedDrinkSubCategory = _drinkSubCategories.first;
+          }
+        }
       });
       _loadSubCategories();
       _loadMenuItems();
@@ -123,6 +131,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           if (_selectedDrinkSubCategory != null &&
               !_drinkSubCategories.any((s) => s.id == _selectedDrinkSubCategory!.id)) {
             _selectedDrinkSubCategory = null;
+          }
+
+          if (_subCategoryViewMode == SubCategoryViewMode.tab) {
+            if (_selectedFoodSubCategory == null && _foodSubCategories.isNotEmpty) {
+              _selectedFoodSubCategory = _foodSubCategories.first;
+            }
+            if (_selectedDrinkSubCategory == null && _drinkSubCategories.isNotEmpty) {
+              _selectedDrinkSubCategory = _drinkSubCategories.first;
+            }
           }
         });
       }
@@ -179,8 +196,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _changeSubCategoryViewMode(SubCategoryViewMode mode) {
     setState(() {
       _subCategoryViewMode = mode;
+      if (mode == SubCategoryViewMode.tab) {
+        if (_activeType == CategoryType.food && _selectedFoodSubCategory == null && _foodSubCategories.isNotEmpty) {
+          _selectedFoodSubCategory = _foodSubCategories.first;
+        } else if (_activeType == CategoryType.drink && _selectedDrinkSubCategory == null && _drinkSubCategories.isNotEmpty) {
+          _selectedDrinkSubCategory = _drinkSubCategories.first;
+        }
+      } else {
+        if (_activeType == CategoryType.food) {
+          _selectedFoodSubCategory = null;
+        } else {
+          _selectedDrinkSubCategory = null;
+        }
+      }
     });
     PreferenceService.saveSubCategoryViewMode(mode);
+    _loadMenuItems();
   }
 
   List<SubCategoryModel> get _currentSubCategories =>
@@ -789,6 +820,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return ManageSubCategoryDialog(
           activeType: _activeType,
           subCategories: _currentSubCategories,
+          onReorder: (newOrderedList) async {
+            await _db.reorderSubCategories(newOrderedList);
+            await _loadSubCategories();
+          },
           onAdd: (name, imagePath) async {
             final newSub = SubCategoryModel(
               name: name,
@@ -1225,7 +1260,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             // Status Bar (View Mode Toggle & Layout Mode Switcher)
             _buildStatusBar(isViewingCategoryList: isViewingCategoryList),
 
-            // Main Catalog Grid / List with Clean Fade In / Fade Out Transition
+            // Main Catalog Grid / List with Clean Fade Transition
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 280),
@@ -1380,9 +1415,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.restaurant_rounded, size: 16),
+                    Icon(Icons.local_bar_rounded, size: 16),
                     SizedBox(width: 6),
-                    Text('Makanan'),
+                    Text('Minuman'),
                   ],
                 ),
               ),
@@ -1390,9 +1425,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.local_bar_rounded, size: 16),
+                    Icon(Icons.restaurant_rounded, size: 16),
                     SizedBox(width: 6),
-                    Text('Minuman'),
+                    Text('Makanan'),
                   ],
                 ),
               ),
@@ -1462,21 +1497,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.only(right: 14),
               children: [
-                _buildFilterChip(
-                  label: 'Semua',
-                  count: null,
-                  isSelected: selectedSub == null,
-                  onTap: () => _selectSubCategory(null),
-                ),
-                const SizedBox(width: 8),
                 ...subCategories.map((sub) {
                   final isSelected = selectedSub?.id == sub.id;
-                  final count = _subCategoryCounts[sub.id] ?? 0;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: _buildFilterChip(
                       label: sub.name,
-                      count: count,
+                      count: null,
                       isSelected: isSelected,
                       onTap: () => _selectSubCategory(sub),
                     ),

@@ -947,7 +947,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Harga Khusus Kategori Pelanggan (Opsional)
+                      // Harga Khusus Customer (Opsional)
                       _buildCustomerPricesSection(),
                       const SizedBox(height: 16),
 
@@ -1381,44 +1381,20 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          const Text(
-                            'Harga Khusus Kategori',
-                            style: TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textDark,
-                            ),
-                          ),
-                          if (!hasCustomPrices) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F1F4),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFDCDAE0)),
-                              ),
-                              child: const Text(
-                                '(Default)',
-                                style: TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.textMedium,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      const Text(
+                        'Harga Khusus Customer',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textDark,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         hasCustomPrices
-                            ? '$activeCustomCount kategori diatur harga khusus'
-                            : 'Harga mengikuti harga menu normal (Default)',
+                            ? 'Harga khusus aktif'
+                            : 'Harga mengikuti harga menu normal',
                         style: TextStyle(
                           fontFamily: AppTheme.fontFamily,
                           fontSize: 11,
@@ -1429,50 +1405,19 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                     ],
                   ),
                 ),
-                if (hasCustomPrices) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppTheme.softPinkBackground,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFFD1DC)),
-                    ),
-                    child: Text(
-                      '$activeCustomCount Diatur',
-                      style: const TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primaryPinkDark,
+                if (hasCustomPrices)
+                  Tooltip(
+                    message: '$activeCustomCount customer diatur harga khusus',
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF59E0B),
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF4F4F6),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFE2E0E6)),
-                    ),
-                    child: const Text(
-                      '(Default)',
-                      style: TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textMedium,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppTheme.textLight,
-                  size: 20,
-                ),
               ],
             ),
           ),
@@ -1529,7 +1474,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Harga Khusus Kategori',
+                                  'Harga Khusus Customer',
                                   style: TextStyle(
                                     fontFamily: AppTheme.fontFamily,
                                     fontSize: 15,
@@ -1539,7 +1484,7 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  'Atur harga menu untuk setiap kategori pelanggan',
+                                  'Atur harga menu untuk setiap customer',
                                   style: TextStyle(
                                     fontFamily: AppTheme.fontFamily,
                                     fontSize: 11,
@@ -1721,18 +1666,18 @@ class _AddEditMenuDialogState extends State<AddEditMenuDialog> {
                 ),
               ),
             ),
-            if (!hasCustom) ...[
-              const SizedBox(width: 4),
-              const Text(
-                '(Default)',
-                style: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textLight,
+            const SizedBox(width: 5),
+            Tooltip(
+              message: hasCustom ? 'Harga khusus aktif' : 'Belum disetting (mengikuti harga normal)',
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: hasCustom ? const Color(0xFFF59E0B) : const Color(0xFFBDBDBD),
+                  shape: BoxShape.circle,
                 ),
               ),
-            ],
+            ),
           ],
         ),
         const SizedBox(height: 4),

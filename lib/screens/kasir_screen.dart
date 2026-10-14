@@ -51,7 +51,7 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   late final TabController _tabController;
   final DatabaseService _db = DatabaseService.instance;
 
-  CategoryType _activeType = CategoryType.food;
+  CategoryType _activeType = CategoryType.drink;
   LayoutMode _layoutMode = LayoutMode.medium; // Default 2 columns (Sedang)
   SubCategoryViewMode _subCategoryViewMode = SubCategoryViewMode.tab; // Default Tab
 
@@ -166,9 +166,17 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   }
 
   void _handleTabChange() {
-    if (_tabController.indexIsChanging || _tabController.index != _activeType.index) {
+    final targetType = _tabController.index == 0 ? CategoryType.drink : CategoryType.food;
+    if (_tabController.indexIsChanging || targetType != _activeType) {
       setState(() {
-        _activeType = _tabController.index == 0 ? CategoryType.food : CategoryType.drink;
+        _activeType = targetType;
+        if (_subCategoryViewMode == SubCategoryViewMode.tab) {
+          if (_activeType == CategoryType.food && _selectedFoodSubCategory == null && _foodSubCategories.isNotEmpty) {
+            _selectedFoodSubCategory = _foodSubCategories.first;
+          } else if (_activeType == CategoryType.drink && _selectedDrinkSubCategory == null && _drinkSubCategories.isNotEmpty) {
+            _selectedDrinkSubCategory = _drinkSubCategories.first;
+          }
+        }
       });
       _loadSubCategories();
       _loadMenuItems();
@@ -220,6 +228,15 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
           if (_selectedDrinkSubCategory != null &&
               !_drinkSubCategories.any((s) => s.id == _selectedDrinkSubCategory!.id)) {
             _selectedDrinkSubCategory = null;
+          }
+
+          if (_subCategoryViewMode == SubCategoryViewMode.tab) {
+            if (_selectedFoodSubCategory == null && _foodSubCategories.isNotEmpty) {
+              _selectedFoodSubCategory = _foodSubCategories.first;
+            }
+            if (_selectedDrinkSubCategory == null && _drinkSubCategories.isNotEmpty) {
+              _selectedDrinkSubCategory = _drinkSubCategories.first;
+            }
           }
         });
       }
@@ -281,8 +298,22 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
   void _changeSubCategoryViewMode(SubCategoryViewMode mode) {
     setState(() {
       _subCategoryViewMode = mode;
+      if (mode == SubCategoryViewMode.tab) {
+        if (_activeType == CategoryType.food && _selectedFoodSubCategory == null && _foodSubCategories.isNotEmpty) {
+          _selectedFoodSubCategory = _foodSubCategories.first;
+        } else if (_activeType == CategoryType.drink && _selectedDrinkSubCategory == null && _drinkSubCategories.isNotEmpty) {
+          _selectedDrinkSubCategory = _drinkSubCategories.first;
+        }
+      } else {
+        if (_activeType == CategoryType.food) {
+          _selectedFoodSubCategory = null;
+        } else {
+          _selectedDrinkSubCategory = null;
+        }
+      }
     });
     PreferenceService.saveSubCategoryViewMode(mode);
+    _loadMenuItems();
   }
 
   List<SubCategoryModel> get _currentSubCategories =>
@@ -1094,6 +1125,10 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
               ),
               actions: [
                 TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text('Batal'),
+                ),
+                TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Abaikan / Hapus'),
                 ),
@@ -1111,10 +1146,30 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
 
           if (shouldSave == true) {
             await _savePendingTransaction();
-            if (context.mounted) Navigator.of(context).pop();
+            if (context.mounted) {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else if (widget.resumeTransaction != null) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
+                );
+              } else {
+                SystemNavigator.pop();
+              }
+            }
           } else if (shouldSave == false) {
             _clearCart();
-            if (context.mounted) Navigator.of(context).pop();
+            if (context.mounted) {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else if (widget.resumeTransaction != null) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
+                );
+              } else {
+                SystemNavigator.pop();
+              }
+            }
           }
         }
       },
@@ -1132,6 +1187,10 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                     'Terdapat $_totalItemsInCart menu di keranjang kasir. Simpan ke Riwayat Transaksi sebelum berpindah menu?',
                   ),
                   actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, null),
+                      child: const Text('Batal'),
+                    ),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx, false),
                       child: const Text('Hapus / Abaikan'),
@@ -1224,26 +1283,26 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                         ? 'category_grid_${_activeType.name}_${_layoutMode.name}'
                         : 'menu_grid_${_currentSelectedSubCategory?.id}_${_activeType.name}_${_layoutMode.name}_$isSearching',
                   ),
-                  color: AppTheme.primaryPink,
-                  backgroundColor: Colors.white,
-                  onRefresh: () async {
-                    await _loadSubCategories();
-                    await _loadMenuItems();
-                  },
-                  child: _isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(color: AppTheme.primaryPink),
-                        )
-                      : isViewingCategoryList
-                          ? (_currentSubCategories.isEmpty
-                              ? _buildEmptyCategoryState()
-                              : _buildCategoryGrid(horizontalPad))
-                          : (_menuItems.isEmpty
-                              ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
-                              : _buildMenuGrid(horizontalPad)),
+                    color: AppTheme.primaryPink,
+                    backgroundColor: Colors.white,
+                    onRefresh: () async {
+                      await _loadSubCategories();
+                      await _loadMenuItems();
+                    },
+                    child: _isLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(color: AppTheme.primaryPink),
+                          )
+                        : isViewingCategoryList
+                            ? (_currentSubCategories.isEmpty
+                                ? _buildEmptyCategoryState()
+                                : _buildCategoryGrid(horizontalPad))
+                            : (_menuItems.isEmpty
+                                ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
+                                : _buildMenuGrid(horizontalPad)),
+                  ),
                 ),
               ),
-            ),
 
             // Bottom Sticky Order Bar (Cart)
             _buildBottomOrderBar(),
@@ -1377,9 +1436,9 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.restaurant_rounded, size: 16),
+                    Icon(Icons.local_bar_rounded, size: 16),
                     SizedBox(width: 6),
-                    Text('Makanan'),
+                    Text('Minuman'),
                   ],
                 ),
               ),
@@ -1387,9 +1446,9 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.local_bar_rounded, size: 16),
+                    Icon(Icons.restaurant_rounded, size: 16),
                     SizedBox(width: 6),
-                    Text('Minuman'),
+                    Text('Makanan'),
                   ],
                 ),
               ),
@@ -1419,13 +1478,6 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         children: [
-          _buildFilterChip(
-            label: 'Semua',
-            count: null,
-            isSelected: selectedSub == null,
-            onTap: () => _selectSubCategory(null),
-          ),
-          const SizedBox(width: 8),
           ...subCategories.map((sub) {
             final isSelected = selectedSub?.id == sub.id;
             final count = _subCategoryCounts[sub.id] ?? 0;

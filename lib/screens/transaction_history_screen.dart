@@ -385,27 +385,6 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     ],
                   ),
                 ),
-                if (_filteredTransactions.any((t) => t.isPending)) ...[
-                  Container(width: 1, height: 16, color: Colors.white24),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        const Icon(Icons.pending_actions_rounded, color: Color(0xFFFFE082), size: 15),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Pending: ${_filteredTransactions.where((t) => t.isPending).length}',
-                          style: const TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            color: Color(0xFFFFE082),
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -530,32 +509,38 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: trx.isPending ? const Color(0xFFFFF3E0) : AppTheme.softPinkBackground,
-                            borderRadius: BorderRadius.circular(8),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: trx.isPending ? const Color(0xFFFFF3E0) : AppTheme.softPinkBackground,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              trx.isPending ? Icons.pending_actions_rounded : Icons.receipt_long_rounded,
+                              size: 16,
+                              color: trx.isPending ? const Color(0xFFE65100) : AppTheme.primaryPink,
+                            ),
                           ),
-                          child: Icon(
-                            trx.isPending ? Icons.pending_actions_rounded : Icons.receipt_long_rounded,
-                            size: 16,
-                            color: trx.isPending ? const Color(0xFFE65100) : AppTheme.primaryPink,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              trx.invoiceNumber,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          trx.invoiceNumber,
-                          style: const TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -588,7 +573,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           ),
                           const SizedBox(width: 6),
                         ],
-                        if (trx.paymentMethod.isNotEmpty && trx.paymentMethod != 'Belum Dibayar') ...[
+                        if (trx.paymentMethod.isNotEmpty && trx.paymentMethod != 'Belum Dibayar')
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                             decoration: BoxDecoration(
@@ -612,37 +597,6 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
                                     color: AppTheme.primaryPinkDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        if (trx.isPending)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF3E0),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFFFB74D), width: 0.8),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.hourglass_top_rounded,
-                                  size: 12,
-                                  color: Color(0xFFE65100),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Belum Selesai',
-                                  style: TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFFE65100),
                                   ),
                                 ),
                               ],
@@ -1245,28 +1199,31 @@ class _ReceiptDetailDialog extends StatelessWidget {
   }
 
   void _confirmDelete(BuildContext context) {
-    showDialog(
+    showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus Catatan Transaksi?'),
         content: Text('Riwayat "${transaction.invoiceNumber}" akan dihapus secara permanen.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.dangerRed),
-            onPressed: () async {
-              Navigator.pop(ctx); // Close confirm
-              Navigator.pop(context); // Close detail dialog
-              if (transaction.id != null) {
-                await DatabaseService.instance.deleteTransaction(transaction.id!);
-                onDeleted();
-              }
-            },
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Hapus'),
           ),
         ],
       ),
-    );
+    ).then((confirmed) async {
+      if (confirmed == true && context.mounted) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(); // Close detail dialog
+        }
+        if (transaction.id != null) {
+          await DatabaseService.instance.deleteTransaction(transaction.id!);
+          onDeleted();
+        }
+      }
+    });
   }
 
   Widget _buildDetailRow(
