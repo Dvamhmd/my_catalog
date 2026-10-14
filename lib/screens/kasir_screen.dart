@@ -1089,6 +1089,99 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
     );
   }
 
+  Future<bool?> _showPendingOrderConfirmationDialog({
+    required BuildContext context,
+    required String message,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(12, 12, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        title: Row(
+          children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: AppTheme.textMedium,
+                size: 22,
+              ),
+              tooltip: 'Batal',
+              onPressed: () => Navigator.pop(ctx, null),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Pesanan Belum Selesai',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16.5,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 13.5,
+            color: AppTheme.textMedium,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.dangerRed,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Abaikan / Hapus',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE65100),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            icon: const Icon(Icons.bookmark_added_rounded, size: 16),
+            label: const Text(
+              'Simpan ke Riwayat',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ==================== BUILD UI ====================
 
   @override
@@ -1116,32 +1209,9 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
           return;
         }
         if (_cart.isNotEmpty) {
-          final shouldSave = await showDialog<bool>(
+          final shouldSave = await _showPendingOrderConfirmationDialog(
             context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Pesanan Belum Selesai'),
-              content: const Text(
-                'Simpan pesanan yang belum selesai ke Riwayat Transaksi agar dapat dilanjutkan nanti?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, null),
-                  child: const Text('Batal'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Abaikan / Hapus'),
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE65100),
-                  ),
-                  icon: const Icon(Icons.bookmark_added_rounded, size: 16),
-                  label: const Text('Simpan ke Riwayat'),
-                  onPressed: () => Navigator.pop(ctx, true),
-                ),
-              ],
-            ),
+            message: 'Simpan pesanan yang belum selesai ke Riwayat Transaksi agar dapat dilanjutkan nanti?',
           );
 
           if (shouldSave == true) {
@@ -1179,32 +1249,9 @@ class _KasirScreenState extends State<KasirScreen> with TickerProviderStateMixin
           activeMenu: AppDrawerMenu.kasir,
           onSelectMenu: (menu) async {
             if (_cart.isNotEmpty && menu != AppDrawerMenu.kasir) {
-              final shouldSave = await showDialog<bool>(
+              final shouldSave = await _showPendingOrderConfirmationDialog(
                 context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Pesanan Belum Selesai'),
-                  content: Text(
-                    'Terdapat $_totalItemsInCart menu di keranjang kasir. Simpan ke Riwayat Transaksi sebelum berpindah menu?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, null),
-                      child: const Text('Batal'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Hapus / Abaikan'),
-                    ),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE65100),
-                      ),
-                      icon: const Icon(Icons.bookmark_added_rounded, size: 16),
-                      label: const Text('Simpan ke Riwayat'),
-                      onPressed: () => Navigator.pop(ctx, true),
-                    ),
-                  ],
-                ),
+                message: 'Terdapat $_totalItemsInCart menu di keranjang kasir. Simpan ke Riwayat Transaksi sebelum berpindah menu?',
               );
 
               if (shouldSave == true) {
