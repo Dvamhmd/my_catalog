@@ -48,6 +48,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   SubCategoryModel? _selectedDrinkSubCategory;
 
   List<MenuItemModel> _menuItems = const [];
+  List<MenuItemModel> _allMenuItems = const [];
+  late PageController _pageController;
+  final Map<int, GlobalKey> _subCategoryKeys = {};
   bool _isLoading = true;
 
   bool _isSearchOpen = false;
@@ -60,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     PreferenceService.saveLastActiveMenu(AppDrawerMenu.admin);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChange);
+    _pageController = PageController();
 
     _initData();
   }
@@ -69,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _searchDebounce?.cancel();
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
+    _pageController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -88,6 +93,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       });
       _loadSubCategories();
       _loadMenuItems();
+
+      final targetSub = targetType == CategoryType.food ? _selectedFoodSubCategory : _selectedDrinkSubCategory;
+      final subs = targetType == CategoryType.food ? _foodSubCategories : _drinkSubCategories;
+      final targetIndex = targetSub != null ? subs.indexWhere((s) => s.id == targetSub.id) : 0;
+      final safeIndex = (targetIndex >= 0 && targetIndex < subs.length) ? targetIndex : 0;
+      _pageController.dispose();
+      _pageController = PageController(initialPage: safeIndex);
+
+      if (targetSub?.id != null) {
+        _scrollToSelectedCategoryChip(targetSub!.id);
+      }
     }
   }
 
@@ -154,9 +170,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ? _selectedFoodSubCategory
           : _selectedDrinkSubCategory;
 
-      final items = await _db.getMenuItems(
+      final allItems = await _db.getMenuItems(
         type: _activeType,
-        subCategoryId: activeSub?.id,
         searchQuery: _searchController.text.trim().isEmpty ? null : _searchController.text.trim(),
       );
 
@@ -164,7 +179,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       if (mounted) {
         setState(() {
-          _menuItems = items;
+          _allMenuItems = allItems;
+          _menuItems = activeSub == null
+              ? allItems
+              : allItems.where((m) => m.subCategoryId == activeSub.id).toList();
           _subCategoryCounts = counts;
           _isLoading = false;
         });
@@ -212,6 +230,74 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
     PreferenceService.saveSubCategoryViewMode(mode);
     _loadMenuItems();
+
+    if (mode == SubCategoryViewMode.tab) {
+      final targetSub = _currentSelectedSubCategory;
+      final subs = _currentSubCategories;
+      final targetIndex = targetSub != null ? subs.indexWhere((s) => s.id == targetSub.id) : 0;
+      final safeIndex = (targetIndex >= 0 && targetIndex < subs.length) ? targetIndex : 0;
+      _pageController.dispose();
+      _pageController = PageController(initialPage: safeIndex);
+
+      if (targetSub?.id != null) {
+        _scrollToSelectedCategoryChip(targetSub!.id);
+      }
+    }
+  }
+
+  void _onCategoryChipTapped(SubCategoryModel sub) {
+    final index = _currentSubCategories.indexWhere((s) => s.id == sub.id);
+    if (index == -1) return;
+
+    setState(() {
+      if (_activeType == CategoryType.food) {
+        _selectedFoodSubCategory = sub;
+      } else {
+        _selectedDrinkSubCategory = sub;
+      }
+      _menuItems = _allMenuItems.where((m) => m.subCategoryId == sub.id).toList();
+    });
+
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeInOutCubic,
+      );
+    }
+    _scrollToSelectedCategoryChip(sub.id);
+  }
+
+  void _onPageChanged(int index) {
+    if (index < 0 || index >= _currentSubCategories.length) return;
+    final sub = _currentSubCategories[index];
+    if (sub.id == _currentSelectedSubCategory?.id) return;
+
+    setState(() {
+      if (_activeType == CategoryType.food) {
+        _selectedFoodSubCategory = sub;
+      } else {
+        _selectedDrinkSubCategory = sub;
+      }
+      _menuItems = _allMenuItems.where((m) => m.subCategoryId == sub.id).toList();
+    });
+    _scrollToSelectedCategoryChip(sub.id);
+  }
+
+  void _scrollToSelectedCategoryChip(int? subId) {
+    if (subId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final chipKey = _subCategoryKeys[subId];
+      final context = chipKey?.currentContext;
+      if (context != null && mounted) {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          alignment: 0.5,
+        );
+      }
+    });
   }
 
   List<SubCategoryModel> get _currentSubCategories =>
@@ -1282,30 +1368,66 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     child: child,
                   );
                 },
-                child: RefreshIndicator(
-                  key: ValueKey(
-                    isViewingCategoryList
-                        ? 'category_grid_${_activeType.name}_${_layoutMode.name}'
-                        : 'menu_grid_${_currentSelectedSubCategory?.id}_${_activeType.name}_${_layoutMode.name}_$isSearching',
-                  ),
-                  color: AppTheme.primaryPink,
-                  backgroundColor: Colors.white,
-                  onRefresh: () async {
-                    await _loadSubCategories();
-                    await _loadMenuItems();
-                  },
-                  child: _isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(color: AppTheme.primaryPink),
-                        )
-                      : isViewingCategoryList
-                          ? (_currentSubCategories.isEmpty
-                              ? _buildEmptyCategoryState()
-                              : _buildCategoryGrid(horizontalPad))
-                          : (_menuItems.isEmpty
-                              ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
-                              : _buildMenuGrid(horizontalPad)),
-                ),
+                child: _isLoading
+                    ? const Center(
+                        key: ValueKey('loading_indicator'),
+                        child: CircularProgressIndicator(color: AppTheme.primaryPink),
+                      )
+                    : (_subCategoryViewMode == SubCategoryViewMode.tab && !isSearching)
+                        ? Container(
+                            key: ValueKey('tab_catalog_${_activeType.name}_${_layoutMode.name}'),
+                            child: _currentSubCategories.isEmpty
+                                ? RefreshIndicator(
+                                    color: AppTheme.primaryPink,
+                                    backgroundColor: Colors.white,
+                                    onRefresh: () async {
+                                      await _loadSubCategories();
+                                      await _loadMenuItems();
+                                    },
+                                    child: _buildEmptyCategoryState(),
+                                  )
+                                : PageView.builder(
+                                    controller: _pageController,
+                                    physics: const BouncingScrollPhysics(parent: PageScrollPhysics()),
+                                    itemCount: _currentSubCategories.length,
+                                    onPageChanged: _onPageChanged,
+                                    itemBuilder: (context, index) {
+                                      final sub = _currentSubCategories[index];
+                                      final subItems = _allMenuItems.where((m) => m.subCategoryId == sub.id).toList();
+                                      return RefreshIndicator(
+                                        color: AppTheme.primaryPink,
+                                        backgroundColor: Colors.white,
+                                        onRefresh: () async {
+                                          await _loadSubCategories();
+                                          await _loadMenuItems();
+                                        },
+                                        child: subItems.isEmpty
+                                            ? _buildEmptyMenuState(isInsideCategory: true, subCategoryName: sub.name)
+                                            : _buildMenuGrid(horizontalPad, items: subItems),
+                                      );
+                                    },
+                                  ),
+                          )
+                        : RefreshIndicator(
+                            key: ValueKey(
+                              isViewingCategoryList
+                                  ? 'category_grid_${_activeType.name}_${_layoutMode.name}'
+                                  : 'menu_grid_${_currentSelectedSubCategory?.id}_${_activeType.name}_${_layoutMode.name}_$isSearching',
+                            ),
+                            color: AppTheme.primaryPink,
+                            backgroundColor: Colors.white,
+                            onRefresh: () async {
+                              await _loadSubCategories();
+                              await _loadMenuItems();
+                            },
+                            child: isViewingCategoryList
+                                ? (_currentSubCategories.isEmpty
+                                    ? _buildEmptyCategoryState()
+                                    : _buildCategoryGrid(horizontalPad))
+                                : (_menuItems.isEmpty
+                                    ? _buildEmptyMenuState(isInsideCategory: isViewingInsideCategory)
+                                    : _buildMenuGrid(horizontalPad, items: _menuItems)),
+                          ),
               ),
             ),
           ],
@@ -1500,12 +1622,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ...subCategories.map((sub) {
                   final isSelected = selectedSub?.id == sub.id;
                   return Padding(
+                    key: sub.id != null ? _subCategoryKeys.putIfAbsent(sub.id!, () => GlobalKey()) : null,
                     padding: const EdgeInsets.only(right: 8),
                     child: _buildFilterChip(
                       label: sub.name,
                       count: null,
                       isSelected: isSelected,
-                      onTap: () => _selectSubCategory(sub),
+                      onTap: () => _onCategoryChipTapped(sub),
                     ),
                   );
                 }),
@@ -1812,7 +1935,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // ==================== MENU GRID / LIST (PERBARIS, JAJAR 2, JAJAR 3) ====================
 
-  Widget _buildMenuGrid(double horizontalPad) {
+  Widget _buildMenuGrid(double horizontalPad, {required List<MenuItemModel> items}) {
     final aspectRatio = Responsive.getCardAspectRatio(
       context: context,
       columns: _layoutMode.columns,
@@ -1826,10 +1949,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           top: 4,
           bottom: 90,
         ),
-        itemCount: _menuItems.length,
+        itemCount: items.length,
         separatorBuilder: (context, index) => const SizedBox(height: 6),
         itemBuilder: (context, index) {
-          final item = _menuItems[index];
+          final item = items[index];
           return MenuCardLarge(
             key: ValueKey(item.id),
             item: item,
@@ -1852,9 +1975,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         mainAxisSpacing: _layoutMode == LayoutMode.small ? 8 : 12,
         childAspectRatio: aspectRatio,
       ),
-      itemCount: _menuItems.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        final item = _menuItems[index];
+        final item = items[index];
         if (_layoutMode == LayoutMode.small) {
           return MenuCardSmall(
             key: ValueKey(item.id),
@@ -1879,6 +2002,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     return Center(
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1923,12 +2047,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildEmptyMenuState({bool isInsideCategory = false}) {
-    final subName = _currentSelectedSubCategory?.name;
+  Widget _buildEmptyMenuState({bool isInsideCategory = false, String? subCategoryName}) {
+    final subName = subCategoryName ?? _currentSelectedSubCategory?.name;
     final categoryIcon = _activeType.icon;
 
     return Center(
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
